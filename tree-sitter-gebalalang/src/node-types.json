@@ -450,10 +450,6 @@
     "named": false
   },
   {
-    "type": "comment",
-    "named": true
-  },
-  {
     "type": "num",
     "named": true
   },

@@ -3,11 +3,11 @@
 
 module.exports = grammar({
   name: "gbl",
-
+  
   rules: {
     program_all: $ => seq(repeat($.procedure), $.main),
 
-    procedure: $ => seq('PROCEDURE', $.proc_head, 'IS', optional($.declarations), 'BEGIN', $.commands, 'END'),
+    procedure: $ => seq('PROCEDURE', $.proc_head, 'IS', optional($.declarations), 'BEGIN', optional($.commands), 'END'),
 
     main: $ => seq('PROGRAM', 'IS', optional($.declarations) , 'BEGIN', optional($.commands), 'END'),
 
@@ -79,11 +79,17 @@ module.exports = grammar({
       seq($.pidentifier, '[', $.num, ']')
     ),
 
-    comment: $ => /#.*/, 
+    _comment: $ => /#.*/, 
     // Tokens and primitives
-    pidentifier: $ => /[_a-z]+/,
+
+
+    // evil 
+    pidentifier: ($) => /[_a-z\u{1F300}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F900}-\u{1F9FF}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}]+/u,
+
+    // pidentifier: $ => /[_a-z]+/,
     num: $ => /[-+]?\d+/
 
   },
-  extras: $ => [$.comment, /[ \t\r\n]+/],
+
+  extras: $ => [$._comment, /[ \t\r\n]+/],
 });

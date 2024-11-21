@@ -50,8 +50,16 @@
           "value": "BEGIN"
         },
         {
-          "type": "SYMBOL",
-          "name": "commands"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "commands"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         },
         {
           "type": "STRING",
@@ -846,13 +854,14 @@
         }
       ]
     },
-    "comment": {
+    "_comment": {
       "type": "PATTERN",
       "value": "#.*"
     },
     "pidentifier": {
       "type": "PATTERN",
-      "value": "[_a-z]+"
+      "value": "[_a-z\\u{1F300}-\\u{1F6FF}\\u{1F700}-\\u{1F77F}\\u{1F900}-\\u{1F9FF}\\u{1FA70}-\\u{1FAFF}\\u{2600}-\\u{26FF}]+",
+      "flags": "u"
     },
     "num": {
       "type": "PATTERN",
@@ -862,7 +871,7 @@
   "extras": [
     {
       "type": "SYMBOL",
-      "name": "comment"
+      "name": "_comment"
     },
     {
       "type": "PATTERN",
