@@ -1,9 +1,12 @@
 use clap::Parser;
-use std::fs;
+use std::fmt::Write;
+use std::process::id;
+use std::string;
+use std::{collections::HashMap, fmt, fs, vec};
 use tree_sitter_gbl::LANGUAGE;
 
 #[derive(Debug, Clone)]
-pub struct Program {
+pub struct Ast {
     pub procedures: Vec<Procedure>,
     pub main_block: Block,
 }
@@ -126,7 +129,7 @@ impl<'a> AstBuilder<'a> {
         Self { source_code }
     }
 
-    pub fn build_ast(&self, tree: &tree_sitter::Tree) -> Program {
+    pub fn build_ast(&self, tree: &tree_sitter::Tree) -> Ast {
         let root_node = tree.root_node();
 
         let mut procedures = Vec::new();
@@ -146,7 +149,7 @@ impl<'a> AstBuilder<'a> {
             }
         }
 
-        Program {
+        Ast {
             procedures,
             main_block: main_block.expect("Main block not found"),
         }
@@ -567,37 +570,6 @@ struct Args {
     out: String,
 }
 
-fn main() {
-    let args = Args::parse();
-
-    let mut parser = tree_sitter::Parser::new();
-    parser
-        .set_language(&LANGUAGE.into())
-        .expect("Error loading Gbl parser");
-
-    let code = fs::read_to_string(args.input).expect("Should have been able to read the file");
-
-    let ast_builder = AstBuilder::new(&code);
-    let tree = parser
-        .parse(&code, None)
-        .expect("Failed to parse source code");
-
-    let root_node = tree.root_node();
-
-    if root_node.has_error() {
-        // Find and report the most specific error
-        let error_details = find_most_specific_error(root_node, &code);
-
-        print_error_with_context(&code, &error_details);
-
-        std::process::exit(1);
-    }
-
-    let ast = ast_builder.build_ast(&tree);
-
-    println!(" {:#?}", ast);
-}
-
 #[derive(Debug)]
 struct ErrorDetails {
     message: String,
@@ -681,11 +653,315 @@ fn print_error_with_context(code: &str, error: &ErrorDetails) {
 
             if error.end.column > error.start.column {
                 for _ in error.start.column + 1..error.end.column {
-                    eprint!("\x1b[1;31m~\x1b[0m");
+                    eprint!("\x1b[1;31m^\x1b[0m");
                 }
             }
 
             eprintln!(" \x1b[1;31mError here\x1b[0m");
         }
+    }
+}
+
+fn main() {
+    let args = Args::parse();
+
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(&LANGUAGE.into())
+        .expect("Error loading Gbl parser");
+
+    let code = fs::read_to_string(args.input).expect("Should have been able to read the file");
+
+    let ast_builder = AstBuilder::new(&code);
+    let tree = parser
+        .parse(&code, None)
+        .expect("Failed to parse source code");
+
+    let root_node = tree.root_node();
+
+    if root_node.has_error() {
+        // Find and report the most specific error
+        let error_details = find_most_specific_error(root_node, &code);
+
+        print_error_with_context(&code, &error_details);
+
+        std::process::exit(1);
+    }
+
+    let ast = ast_builder.build_ast(&tree);
+    let optimized_ast = optimize_ast(ast);
+    let mut codeb = CodeGenerator::new();
+    codeb.generate_asm(optimized_ast);
+
+    let asm: Vec<AsmInstruction> = codeb.assembly_code;
+
+    let mut output = String::new();
+
+    for instruction in &asm {
+        writeln!(output, "{}", instruction).expect("Failed to write instruction");
+    }
+
+    println!("{}", output);
+}
+
+fn optimize_ast(ast: Ast) -> Ast {
+    ast
+}
+
+/// Represents the set of assembly-like instructions for a virtual machine.
+///
+/// ## Memory and Program Counter
+/// - Memory `p_i` is indexed by `i = 0, 1, 2, 3, ..., 2^62` and is not initialized.
+/// - `p_0` is the accumulator.
+/// - `k` is the program counter.
+pub enum AsmInstruction {
+    /// Reads a number from the user and stores it in `p_i`.
+    /// - **Effect**: `p_i = user_input`
+    /// - **Cost**: 100
+    /// - **Program Counter**: `k += 1`
+    GET(usize),
+
+    /// Prints the number stored in `p_i`.
+    /// - **Effect**: Outputs `p_i`
+    /// - **Cost**: 100
+    /// - **Program Counter**: `k += 1`
+    PUT(usize),
+
+    /// Loads the value from `p_i` into `p_0` (accumulator).
+    /// - **Effect**: `p_0 = p_i`
+    /// - **Cost**: 10
+    /// - **Program Counter**: `k += 1`
+    LOAD(usize),
+
+    /// Stores the value from `p_0` (accumulator) into `p_i`.
+    /// - **Effect**: `p_i = p_0`
+    /// - **Cost**: 10
+    /// - **Program Counter**: `k += 1`
+    STORE(usize),
+
+    /// Loads the value from the memory address `p_i` into `p_0`.
+    /// - **Effect**: `p_0 = p_{p_i}`
+    /// - **Cost**: 20
+    /// - **Program Counter**: `k += 1`
+    LOADI(usize),
+
+    /// Stores the value from `p_0` into the memory address `p_i`.
+    /// - **Effect**: `p_{p_i} = p_0`
+    /// - **Cost**: 20
+    /// - **Program Counter**: `k += 1`
+    STOREI(usize),
+
+    /// Adds the value of `p_i` to `p_0`.
+    /// - **Effect**: `p_0 += p_i`
+    /// - **Cost**: 10
+    /// - **Program Counter**: `k += 1`
+    ADD(usize),
+
+    /// Subtracts the value of `p_i` from `p_0`.
+    /// - **Effect**: `p_0 -= p_i`
+    /// - **Cost**: 10
+    /// - **Program Counter**: `k += 1`
+    SUB(usize),
+
+    /// Adds the value at the address `p_{p_i}` to `p_0`.
+    /// - **Effect**: `p_0 += p_{p_i}`
+    /// - **Cost**: 20
+    /// - **Program Counter**: `k += 1`
+    ADDI(usize),
+
+    /// Subtracts the value at the address `p_{p_i}` from `p_0`.
+    /// - **Effect**: `p_0 -= p_{p_i}`
+    /// - **Cost**: 20
+    /// - **Program Counter**: `k += 1`
+    SUBI(usize),
+
+    /// Sets `p_0` to a constant value `x`.
+    /// - **Effect**: `p_0 = x`
+    /// - **Cost**: 50
+    /// - **Program Counter**: `k += 1`
+    SET(i64),
+
+    /// Halves the value of `p_0` (integer division).
+    /// - **Effect**: `p_0 = floor(p_0 / 2)`
+    /// - **Cost**: 5
+    /// - **Program Counter**: `k += 1`
+    HALF,
+
+    /// Jumps to a relative address by adding `j` to the program counter.
+    /// - **Effect**: `k += j`
+    /// - **Cost**: 1
+    JUMP(i64),
+
+    /// Jumps to a relative address `j` if `p_0 > 0`. Otherwise, increments `k` by 1.
+    /// - **Effect**: `p_0 > 0 ? k += j : k += 1`
+    /// - **Cost**: 1
+    JPOS(i64),
+
+    /// Jumps to a relative address `j` if `p_0 == 0`. Otherwise, increments `k` by 1.
+    /// - **Effect**: `p_0 == 0 ? k += j : k += 1`
+    /// - **Cost**: 1
+    JZERO(i64),
+
+    /// Jumps to a relative address `j` if `p_0 < 0`. Otherwise, increments `k` by 1.
+    /// - **Effect**: `p_0 < 0 ? k += j : k += 1`
+    /// - **Cost**: 1
+    JNEG(i64),
+
+    /// Sets the program counter to `p_i`.
+    /// - **Effect**: `k = p_i`
+    /// - **Cost**: 10
+    RTRN(i64),
+
+    /// Halts the program.
+    /// - **Effect**: Stops execution.
+    /// - **Cost**: 0
+    HALT,
+}
+
+impl fmt::Display for AsmInstruction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmInstruction::GET(val) => write!(f, "GET {}", val),
+            AsmInstruction::PUT(val) => write!(f, "PUT {}", val),
+            AsmInstruction::LOAD(val) => write!(f, "LOAD {}", val),
+            AsmInstruction::STORE(val) => write!(f, "STORE {}", val),
+            AsmInstruction::LOADI(val) => write!(f, "LOADI {}", val),
+            AsmInstruction::STOREI(val) => write!(f, "STOREI {}", val),
+            AsmInstruction::ADD(val) => write!(f, "ADD {}", val),
+            AsmInstruction::SUB(val) => write!(f, "SUB {}", val),
+            AsmInstruction::ADDI(val) => write!(f, "ADDI {}", val),
+            AsmInstruction::SUBI(val) => write!(f, "SUBI {}", val),
+            AsmInstruction::SET(val) => write!(f, "SET {}", val),
+            AsmInstruction::HALF => write!(f, "HALF"),
+            AsmInstruction::JUMP(val) => write!(f, "JUMP {}", val),
+            AsmInstruction::JPOS(val) => write!(f, "JPOS {}", val),
+            AsmInstruction::JZERO(val) => write!(f, "JZERO {}", val),
+            AsmInstruction::JNEG(val) => write!(f, "JNEG {}", val),
+            AsmInstruction::RTRN(val) => write!(f, "RTRN {}", val),
+            AsmInstruction::HALT => write!(f, "HALT"),
+        }
+    }
+}
+
+struct VariableLocation {
+    Memory: usize,
+}
+
+struct CodeGenerator {
+    variables: HashMap<String, VariableLocation>,
+
+    next_memory_slot: usize,
+
+    assembly_code: Vec<AsmInstruction>,
+}
+
+impl CodeGenerator {
+    fn new() -> Self {
+        CodeGenerator {
+            variables: HashMap::new(),
+            next_memory_slot: 1,
+            assembly_code: Vec::new(),
+        }
+    }
+
+    fn get_variable(&self, name: &str) -> &VariableLocation {
+        return self.variables.get(name).unwrap();
+    }
+
+    fn allocate_variable(&mut self, name: String, left: i64, right: i64) {
+        if left == 0 && right == 0 {
+
+            self.variables.insert(
+                name,
+                VariableLocation {
+                    Memory: self.next_memory_slot,
+                },
+            );
+
+            return;
+        }
+
+        unimplemented!("CANT ALLOCATE ARRAYS YET");
+
+    }
+
+    fn genearate_command(&mut self, command: &Command) {
+        match command {
+            Command::Assignment {
+                identifier,
+                expression,
+            } => {
+                let var = self.get_variable(&identifier.name);
+                match expression {
+                    Expression::Value(val) => match val {
+                        Value::Number(num) => {
+                            let var_mem_location = var.Memory;
+                            self.assembly_code
+                                .push(AsmInstruction::LOAD(var_mem_location));
+                            self.assembly_code.push(AsmInstruction::SET(num.clone()));
+                            self.assembly_code
+                                .push(AsmInstruction::STORE(var_mem_location));
+                        }
+                        Value::Identifier(ident) => {
+                            if let Some(idx) = &ident.index {
+                                unimplemented!("{:?} not implemented yet", expression)
+                            } else {
+                                let src_mem_location = self.get_variable(&ident.name).Memory;
+                                let var_mem_location = var.Memory;
+                                self.assembly_code
+                                    .push(AsmInstruction::LOAD(src_mem_location));
+                                self.assembly_code
+                                    .push(AsmInstruction::STORE(var_mem_location));
+                            }
+                        }
+                    },
+                    _ => {
+                        unimplemented!("{:?} not implemented yet", expression)
+                    }
+                }
+            }
+            Command::Write(value) => {
+                let mem_location_to_write;
+                match value {
+                    Value::Identifier(ident) => {
+                        let var = self.get_variable(&ident.name);
+                        mem_location_to_write = var.Memory;
+                    }
+                    Value::Number(num) => {
+                        mem_location_to_write = self.next_memory_slot;
+                        self.assembly_code
+                            .push(AsmInstruction::LOAD(mem_location_to_write));
+                        self.assembly_code.push(AsmInstruction::SET(num.clone()));
+                        self.assembly_code
+                            .push(AsmInstruction::STORE(mem_location_to_write));
+                    }
+                }
+                self.assembly_code
+                    .push(AsmInstruction::PUT(mem_location_to_write));
+            }
+            _ => {
+                unimplemented!("command {:?} not implemented yet", command)
+            }
+        }
+    }
+
+    fn generate_asm(&mut self, ast: Ast) {
+        if ast.procedures.len() > 0 {
+            unimplemented!("prcedures arent implemented yet")
+        }
+
+        for declaration in &ast.main_block.declarations {
+            if let Some((start, end)) = declaration.array_size {
+                self.allocate_variable(declaration.name.clone(), start, end);
+            } else {
+                self.allocate_variable(declaration.name.clone(), 0, 0);
+            }
+        }
+
+        for command in &ast.main_block.commands {
+            self.genearate_command(command);
+        }
+
+        self.assembly_code.push(AsmInstruction::HALT);
     }
 }

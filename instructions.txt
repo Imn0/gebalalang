@@ -1,0 +1,32 @@
+
+
+k - program counter 
+memory p_i : i = 0,1,2,3,..., 2^62 not initialized 
+p_0 is accumulator 
+
+
+
+GET i ; reads number from user and puts it in p_i, k += 1 ; cost 100
+PUT i ; prints number in p_i, k += 1 ; cost 100
+
+LOAD i ; p_0 = p_i, k += 1; cost 10
+STORE i ; p_i = p_0, k += 1; cost 10
+LOADI i ; p_0 = p_{p_i}, k += 1; cost 20
+STOREI i ; p_{p_i} = p_0, k += 1; cost 20
+
+ADD i ; p_0 += p_i, k += 1 ; cost 10
+SUB i ; p_0 -= p_i, k += 1 ; cost 10
+ADDI i ; p_0 += p_{p_i}, k += 1 ; cost 20
+SUBI i ; p_0 -= p_{p_i}, k += 1 ; cost 20
+
+SET x ; p_0 = x, k += 1; cost 50
+HALF ; p_0 = floor(p_0 / 2), k += 1; cost 5
+
+JUMP j ; k += j ; cost 1
+JPOS j ; p_0 > 0 ? k += j : k +=1 ; cost 1
+JZERO j ; p_0 == 0 ? k += j : k +=1 ; cost 1
+JNEG j ; p_0 < 0 ? k += j : k +=1 ; cost 1
+
+RTRN i ; k = p_i ; 10
+HALT ; stops program ; cost 0
+
