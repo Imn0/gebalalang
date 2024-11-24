@@ -1,4 +1,5 @@
 use clap::Parser;
+use std::arch::x86_64::_SIDD_LEAST_SIGNIFICANT;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::Write;
@@ -956,11 +957,14 @@ impl CodeGenerator {
                         Either::Left(idx_name) => {
                             let base_loc = self.get_variable(&ident.name).memory;
                             let idx_loc = self.get_variable(idx_name).memory;
-                            
-                            self.assembly_code.push(AsmInstruction::SET(base_loc as i64));
+
+                            self.assembly_code
+                                .push(AsmInstruction::SET(base_loc as i64));
                             self.assembly_code.push(AsmInstruction::ADD(idx_loc));
-                            self.assembly_code.push(AsmInstruction::STORE(self.next_memory_slot));
-                            self.assembly_code.push(AsmInstruction::LOADI(self.next_memory_slot));
+                            self.assembly_code
+                                .push(AsmInstruction::STORE(self.next_memory_slot));
+                            self.assembly_code
+                                .push(AsmInstruction::LOADI(self.next_memory_slot));
                         }
                         Either::Right(idx_num) => {
                             let loc = self.get_variable_w_idx(&ident.name, *idx_num).memory;
@@ -975,23 +979,27 @@ impl CodeGenerator {
         }
     }
 
-
-    /// Stores p_0 do ident location 
+    /// Stores p_0 do ident location
     fn store_to_identifier(&mut self, ident: &Identifier) {
         if let Some(dest_idx) = &ident.index {
             match dest_idx {
                 Either::Left(idx_name) => {
-                    self.assembly_code.push(AsmInstruction::STORE(self.next_memory_slot + 1));
-                    
+                    self.assembly_code
+                        .push(AsmInstruction::STORE(self.next_memory_slot + 1));
+
                     let base_loc = self.get_variable(&ident.name).memory;
                     let idx_loc = self.get_variable(idx_name).memory;
-                    
-                    self.assembly_code.push(AsmInstruction::SET(base_loc as i64));
+
+                    self.assembly_code
+                        .push(AsmInstruction::SET(base_loc as i64));
                     self.assembly_code.push(AsmInstruction::ADD(idx_loc));
-                    self.assembly_code.push(AsmInstruction::STORE(self.next_memory_slot));
-                    
-                    self.assembly_code.push(AsmInstruction::LOAD(self.next_memory_slot + 1));
-                    self.assembly_code.push(AsmInstruction::STOREI(self.next_memory_slot));
+                    self.assembly_code
+                        .push(AsmInstruction::STORE(self.next_memory_slot));
+
+                    self.assembly_code
+                        .push(AsmInstruction::LOAD(self.next_memory_slot + 1));
+                    self.assembly_code
+                        .push(AsmInstruction::STOREI(self.next_memory_slot));
                 }
                 Either::Right(idx_num) => {
                     let dest_loc = self.get_variable_w_idx(&ident.name, *idx_num).memory;
@@ -1004,36 +1012,104 @@ impl CodeGenerator {
         }
     }
 
+    fn generate_condition(&mut self, condition: &Condition) -> AsmInstruction {
+        match condition {
+            Condition::NotEqual(left, right) => {
+                self.generate_value(left);
+                self.assembly_code
+                    .push(AsmInstruction::STORE(self.next_memory_slot));
+                self.generate_value(right);
+                self.assembly_code
+                    .push(AsmInstruction::SUB(self.next_memory_slot));
+                AsmInstruction::JZERO(0)
+            }
+            Condition::Equal(left, right) => {
+                self.generate_value(left);
+                self.assembly_code
+                    .push(AsmInstruction::STORE(self.next_memory_slot));
+                self.generate_value(right);
+                self.assembly_code
+                    .push(AsmInstruction::SUB(self.next_memory_slot));
+                self.assembly_code.push(AsmInstruction::JZERO(2));
+                AsmInstruction::JUMP(0)
+            }
+            Condition::LessOrEqual(left, right) => {
+                self.generate_value(right);
+                self.assembly_code
+                    .push(AsmInstruction::STORE(self.next_memory_slot));
+                self.generate_value(left);
+                self.assembly_code
+                    .push(AsmInstruction::SUB(self.next_memory_slot));
+                AsmInstruction::JPOS(0)
+            }
+            Condition::GreaterOrEqual(left, right) => {
+                self.generate_value(left);
+                self.assembly_code
+                    .push(AsmInstruction::STORE(self.next_memory_slot));
+                self.generate_value(right);
+                self.assembly_code
+                    .push(AsmInstruction::SUB(self.next_memory_slot));
+                AsmInstruction::JPOS(0)
+            }
+            Condition::GreaterThan(left, right) => {
+                self.generate_value(right);
+                self.assembly_code
+                    .push(AsmInstruction::STORE(self.next_memory_slot));
+                self.generate_value(left);
+                self.assembly_code
+                    .push(AsmInstruction::SUB(self.next_memory_slot));
+                self.assembly_code.push(AsmInstruction::JPOS(2));
+                AsmInstruction::JUMP(0)
+            }
+            Condition::LessThan(left, right) => {
+                self.generate_value(left);
+                self.assembly_code
+                    .push(AsmInstruction::STORE(self.next_memory_slot));
+                self.generate_value(right);
+                self.assembly_code
+                    .push(AsmInstruction::SUB(self.next_memory_slot));
+                self.assembly_code.push(AsmInstruction::JPOS(2));
+                AsmInstruction::JUMP(0)
+            }
+        }
+    }
+
     fn genearate_command(&mut self, command: &Command) {
         match command {
-            Command::Assignment { identifier, expression } => {
-                match expression {
-                    Expression::Value(value) => {
-                        self.generate_value(value);
-                        self.store_to_identifier(identifier);
-                    }
-                    Expression::Addition(left, right) => {
-                        self.generate_value(left);
-                        self.assembly_code.push(AsmInstruction::STORE(self.next_memory_slot));
-                        self.generate_value(right);
-                        self.assembly_code.push(AsmInstruction::ADD(self.next_memory_slot));
-                        self.store_to_identifier(identifier);
-                    }
-                    _ => unimplemented!("Expression {:?} not implemented yet", expression),
+            Command::Assignment {
+                identifier,
+                expression,
+            } => match expression {
+                Expression::Value(value) => {
+                    self.generate_value(value);
+                    self.store_to_identifier(identifier);
                 }
-            }
+                Expression::Addition(left, right) => {
+                    self.generate_value(left);
+                    self.assembly_code
+                        .push(AsmInstruction::STORE(self.next_memory_slot));
+                    self.generate_value(right);
+                    self.assembly_code
+                        .push(AsmInstruction::ADD(self.next_memory_slot));
+                    self.store_to_identifier(identifier);
+                }
+                _ => unimplemented!("Expression {:?} not implemented yet", expression),
+            },
             Command::Read(identifier) => {
                 if let Some(idx) = &identifier.index {
                     match idx {
                         Either::Left(idx_name) => {
                             let base_loc = self.get_variable(&identifier.name).memory;
                             let idx_loc = self.get_variable(idx_name).memory;
-                            
-                            self.assembly_code.push(AsmInstruction::SET(base_loc as i64));
+
+                            self.assembly_code
+                                .push(AsmInstruction::SET(base_loc as i64));
                             self.assembly_code.push(AsmInstruction::ADD(idx_loc));
-                            self.assembly_code.push(AsmInstruction::STORE(self.next_memory_slot));
+                            self.assembly_code
+                                .push(AsmInstruction::STORE(self.next_memory_slot));
                             self.assembly_code.push(AsmInstruction::GET(0));
-                            self.assembly_code.push(AsmInstruction::STOREI(self.next_memory_slot));
+                            self.assembly_code
+                                .push(AsmInstruction::STOREI(self.next_memory_slot));
                         }
                         Either::Right(idx_num) => {
                             let loc = self.get_variable_w_idx(&identifier.name, *idx_num).memory;
@@ -1045,10 +1121,86 @@ impl CodeGenerator {
                     self.assembly_code.push(AsmInstruction::GET(loc));
                 }
             }
+            Command::If {
+                condition,
+                then_commands,
+            } => {
+                let jump_instruction = self.generate_condition(condition);
+                let jump_pos = self.assembly_code.len();
+                self.assembly_code.push(jump_instruction);
+                let then_start = self.assembly_code.len() as i64;
+                for cmd in then_commands {
+                    self.genearate_command(cmd);
+                }
+                let then_end = self.assembly_code.len() as i64;
+
+                if let Some(instruction) = self.assembly_code.get_mut(jump_pos) {
+                    match instruction {
+                        AsmInstruction::JZERO(offset) => {
+                            *offset = (then_end - then_start + 1) as i64;
+                        }
+                        AsmInstruction::JPOS(offset) => {
+                            *offset = (then_end - then_start + 1) as i64;
+                        }
+                        AsmInstruction::JNEG(offset) => {
+                            *offset = (then_end - then_start + 1) as i64;
+                        }
+                        AsmInstruction::JUMP(offset) => {
+                            *offset = (then_end - then_start + 1) as i64;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Command::IfElse {
+                condition,
+                then_commands,
+                else_commands,
+            } => {
+                let jump_instruction = self.generate_condition(condition);
+                let jump_pos = self.assembly_code.len();
+                self.assembly_code.push(jump_instruction);
+                let then_start = self.assembly_code.len() as i64;
+                for cmd in then_commands {
+                    self.genearate_command(cmd);
+                }
+                self.assembly_code.push(AsmInstruction::JUMP(0));
+                let then_end = self.assembly_code.len() as i64;
+
+                let else_start = self.assembly_code.len() as i64;
+                for cmd in else_commands {
+                    self.genearate_command(cmd);
+                }
+                let else_end = self.assembly_code.len() as i64;
+
+                if let Some(instruction) = self.assembly_code.get_mut(jump_pos) {
+                    match instruction {
+                        AsmInstruction::JZERO(offset) => {
+                            *offset = (then_end - then_start + 1) as i64;
+                        }
+                        AsmInstruction::JPOS(offset) => {
+                            *offset = (then_end - then_start + 1) as i64;
+                        }
+                        AsmInstruction::JNEG(offset) => {
+                            *offset = (then_end - then_start + 1) as i64;
+                        }
+                        AsmInstruction::JUMP(offset) => {
+                            *offset = (then_end - then_start + 1) as i64;
+                        }
+                        _ => {}
+                    }
+                }
+                if let Some(AsmInstruction::JUMP(offset)) = self.assembly_code.get_mut((then_end-1) as usize) {
+                    *offset = (else_end - else_start + 1) as i64;
+                } else {
+                    panic!("FE");
+                }
+            }
             Command::Write(value) => {
                 self.generate_value(value);
                 self.assembly_code.push(AsmInstruction::PUT(0));
             }
+
             _ => {
                 unimplemented!("command {:?} not implemented yet", command)
             }
