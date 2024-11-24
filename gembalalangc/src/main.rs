@@ -3,6 +3,7 @@ use std::arch::x86_64::_SIDD_LEAST_SIGNIFICANT;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::Write;
+use std::ops::Not;
 use std::process::{exit, id};
 use std::string;
 use std::{collections::HashMap, fmt, fs, vec};
@@ -90,6 +91,21 @@ pub enum Condition {
     LessThan(Value, Value),
     GreaterOrEqual(Value, Value),
     LessOrEqual(Value, Value),
+}
+
+impl Not for Condition {
+    type Output = Condition;
+
+    fn not(self) -> Condition {
+        match self {
+            Condition::Equal(left, right) => Condition::NotEqual(left, right),
+            Condition::NotEqual(left, right) => Condition::Equal(left, right),
+            Condition::GreaterThan(left, right) => Condition::LessOrEqual(left, right),
+            Condition::LessThan(left, right) => Condition::GreaterOrEqual(left, right),
+            Condition::GreaterOrEqual(left, right) => Condition::LessThan(left, right),
+            Condition::LessOrEqual(left, right) => Condition::GreaterThan(left, right),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1190,10 +1206,83 @@ impl CodeGenerator {
                         _ => {}
                     }
                 }
-                if let Some(AsmInstruction::JUMP(offset)) = self.assembly_code.get_mut((then_end-1) as usize) {
+                if let Some(AsmInstruction::JUMP(offset)) =
+                    self.assembly_code.get_mut((then_end - 1) as usize)
+                {
                     *offset = (else_end - else_start + 1) as i64;
                 } else {
                     panic!("FE");
+                }
+            }
+            Command::While {
+                condition,
+                commands,
+            } => {
+                let before_condition = self.assembly_code.len() as i64;
+                let jump_instruction = self.generate_condition(condition);
+                let jump_pos = self.assembly_code.len();
+                self.assembly_code.push(jump_instruction);
+                let after_condition = self.assembly_code.len() as i64;
+
+                for cmd in commands {
+                    self.genearate_command(cmd);
+                }
+
+                let loop_end = self.assembly_code.len() as i64;
+                self.assembly_code
+                    .push(AsmInstruction::JUMP(before_condition - loop_end));
+
+                let after_loop = self.assembly_code.len() as i64;
+                if let Some(instruction) = self.assembly_code.get_mut(jump_pos) {
+                    match instruction {
+                        AsmInstruction::JZERO(offset) => {
+                            *offset = after_loop - after_condition + 1;
+                        }
+                        AsmInstruction::JPOS(offset) => {
+                            *offset = after_loop - after_condition + 1;
+                        }
+                        AsmInstruction::JNEG(offset) => {
+                            *offset = after_loop - after_condition + 1;
+                        }
+                        AsmInstruction::JUMP(offset) => {
+                            *offset = after_loop - after_condition + 1;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            Command::Repeat {
+                commands,
+                condition,
+            } => {
+                let loop_start = self.assembly_code.len() as i64;
+
+                for cmd in commands {
+                    self.genearate_command(cmd);
+                }
+
+                let jump_instruction = self.generate_condition(&(!condition.clone()));
+                let jump_pos = self.assembly_code.len();
+                self.assembly_code.push(jump_instruction);
+                let after_condition = self.assembly_code.len() as i64;
+
+                if let Some(instruction) = self.assembly_code.get_mut(jump_pos) {
+                    match instruction {
+                        AsmInstruction::JZERO(offset) => {
+                            *offset = loop_start - after_condition+1;
+                        }
+                        AsmInstruction::JPOS(offset) => {
+                            *offset = loop_start - after_condition+1;
+                        }
+                        AsmInstruction::JNEG(offset) => {
+                            *offset = loop_start - after_condition+1;
+                        }
+                        AsmInstruction::JUMP(offset) => {
+                            *offset = loop_start - after_condition+1;
+                        }
+                        _ => {}
+                    }
                 }
             }
             Command::Write(value) => {
