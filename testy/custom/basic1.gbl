@@ -1,7 +1,9 @@
 PROGRAM IS 
-    a,b,c,arr[-32:30]
+    a,sito[-5:3],d
 BEGIN
-    b:=12;
-    a:=b;
-    WRITE a;
+    READ a;
+    READ d;
+    sito[a]:=3;
+    sito[d] := sito[a] + 2;
+    WRITE sito[d];
 END

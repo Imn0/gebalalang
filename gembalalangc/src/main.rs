@@ -1,6 +1,8 @@
 use clap::Parser;
-use std::fmt::Write;
-use std::process::id;
+use std::fs::File;
+use std::io::prelude::*;
+use std::io::Write;
+use std::process::{exit, id};
 use std::string;
 use std::{collections::HashMap, fmt, fs, vec};
 use tree_sitter_gbl::LANGUAGE;
@@ -561,12 +563,7 @@ struct Args {
     #[arg(help = "Specify the input file.")]
     input: String,
 
-    #[arg(
-        short,
-        long,
-        default_value = "a.out",
-        help = "Specify the output file."
-    )]
+    #[arg(short, long, default_value = "a.mr", help = "Specify the output file.")]
     out: String,
 }
 
@@ -662,7 +659,7 @@ fn print_error_with_context(code: &str, error: &ErrorDetails) {
     }
 }
 
-fn main() {
+fn main() -> std::io::Result<()> {
     let args = Args::parse();
 
     let mut parser = tree_sitter::Parser::new();
@@ -689,6 +686,7 @@ fn main() {
     }
 
     let ast = ast_builder.build_ast(&tree);
+    print!("{:#?}", ast);
     let optimized_ast = optimize_ast(ast);
     let mut codeb = CodeGenerator::new();
     codeb.generate_asm(optimized_ast);
@@ -698,10 +696,12 @@ fn main() {
     let mut output = String::new();
 
     for instruction in &asm {
-        writeln!(output, "{}", instruction).expect("Failed to write instruction");
+        output += &format!("{}\n", instruction);
     }
-
     println!("{}", output);
+    let mut file = File::create(args.out)?;
+    file.write_all(output.as_bytes())?;
+    Ok(())
 }
 
 fn optimize_ast(ast: Ast) -> Ast {
@@ -843,8 +843,10 @@ impl fmt::Display for AsmInstruction {
     }
 }
 
+#[derive(Debug, Clone)]
 struct VariableLocation {
-    Memory: usize,
+    memory: usize,
+    is_pointer: bool,
 }
 
 struct CodeGenerator {
@@ -864,80 +866,188 @@ impl CodeGenerator {
         }
     }
 
-    fn get_variable(&self, name: &str) -> &VariableLocation {
-        return self.variables.get(name).unwrap();
+    fn get_variable_w_idx(&self, name: &str, idx: i64) -> VariableLocation {
+        let mut loc = self.variables.get(name).unwrap().clone();
+        if idx != 0 {
+            if idx < 0 {
+                loc.memory -= usize::try_from(-idx).unwrap();
+                return loc;
+            } else {
+                loc.memory += usize::try_from(idx).unwrap();
+                return loc;
+            }
+        } else {
+            return loc;
+        }
+    }
+    fn get_variable(&self, name: &str) -> VariableLocation {
+        let loc = self.variables.get(name).unwrap().clone();
+        return loc;
     }
 
     fn allocate_variable(&mut self, name: String, left: i64, right: i64) {
         if left == 0 && right == 0 {
-
             self.variables.insert(
                 name,
                 VariableLocation {
-                    Memory: self.next_memory_slot,
+                    memory: self.next_memory_slot,
+                    is_pointer: false,
                 },
             );
-
+            self.next_memory_slot += 1;
             return;
         }
 
-        unimplemented!("CANT ALLOCATE ARRAYS YET");
+        if left > right {
+            panic!("cant allocate array with dimensions {}:{}", left, right);
+        }
 
+        if left >= 0 && right >= 0 {
+            self.variables.insert(
+                name,
+                VariableLocation {
+                    memory: self.next_memory_slot,
+                    is_pointer: false,
+                },
+            );
+            self.next_memory_slot += usize::try_from(right).unwrap() + 1;
+            return;
+        }
+
+        if left < 0 && right >= 0 {
+            self.next_memory_slot += usize::try_from(-left).unwrap();
+            self.variables.insert(
+                name,
+                VariableLocation {
+                    memory: self.next_memory_slot,
+                    is_pointer: false,
+                },
+            );
+            self.next_memory_slot += usize::try_from(right).unwrap() + 1;
+            return;
+        }
+
+        if left < 0 && right < 0 {
+            self.next_memory_slot += usize::try_from(-left).unwrap();
+            self.variables.insert(
+                name,
+                VariableLocation {
+                    memory: self.next_memory_slot,
+                    is_pointer: false,
+                },
+            );
+            self.next_memory_slot -= usize::try_from(-right).unwrap();
+            self.next_memory_slot += 1;
+            return;
+        }
+
+        panic!("cant allocate array with dimensions {}:{}", left, right);
+    }
+
+    /// Loads value to p_0
+    fn generate_value(&mut self, value: &Value) {
+        match value {
+            Value::Number(num) => {
+                self.assembly_code.push(AsmInstruction::SET(num.clone())); // ! CONSTANT
+            }
+            Value::Identifier(ident) => {
+                if let Some(idx) = &ident.index {
+                    match idx {
+                        Either::Left(idx_name) => {
+                            let base_loc = self.get_variable(&ident.name).memory;
+                            let idx_loc = self.get_variable(idx_name).memory;
+                            
+                            self.assembly_code.push(AsmInstruction::SET(base_loc as i64));
+                            self.assembly_code.push(AsmInstruction::ADD(idx_loc));
+                            self.assembly_code.push(AsmInstruction::STORE(self.next_memory_slot));
+                            self.assembly_code.push(AsmInstruction::LOADI(self.next_memory_slot));
+                        }
+                        Either::Right(idx_num) => {
+                            let loc = self.get_variable_w_idx(&ident.name, *idx_num).memory;
+                            self.assembly_code.push(AsmInstruction::LOAD(loc));
+                        }
+                    }
+                } else {
+                    let loc = self.get_variable(&ident.name).memory;
+                    self.assembly_code.push(AsmInstruction::LOAD(loc));
+                }
+            }
+        }
+    }
+
+
+    /// Stores p_0 do ident location 
+    fn store_to_identifier(&mut self, ident: &Identifier) {
+        if let Some(dest_idx) = &ident.index {
+            match dest_idx {
+                Either::Left(idx_name) => {
+                    self.assembly_code.push(AsmInstruction::STORE(self.next_memory_slot + 1));
+                    
+                    let base_loc = self.get_variable(&ident.name).memory;
+                    let idx_loc = self.get_variable(idx_name).memory;
+                    
+                    self.assembly_code.push(AsmInstruction::SET(base_loc as i64));
+                    self.assembly_code.push(AsmInstruction::ADD(idx_loc));
+                    self.assembly_code.push(AsmInstruction::STORE(self.next_memory_slot));
+                    
+                    self.assembly_code.push(AsmInstruction::LOAD(self.next_memory_slot + 1));
+                    self.assembly_code.push(AsmInstruction::STOREI(self.next_memory_slot));
+                }
+                Either::Right(idx_num) => {
+                    let dest_loc = self.get_variable_w_idx(&ident.name, *idx_num).memory;
+                    self.assembly_code.push(AsmInstruction::STORE(dest_loc));
+                }
+            }
+        } else {
+            let dest_loc = self.get_variable(&ident.name).memory;
+            self.assembly_code.push(AsmInstruction::STORE(dest_loc));
+        }
     }
 
     fn genearate_command(&mut self, command: &Command) {
         match command {
-            Command::Assignment {
-                identifier,
-                expression,
-            } => {
-                let var = self.get_variable(&identifier.name);
+            Command::Assignment { identifier, expression } => {
                 match expression {
-                    Expression::Value(val) => match val {
-                        Value::Number(num) => {
-                            let var_mem_location = var.Memory;
-                            self.assembly_code
-                                .push(AsmInstruction::LOAD(var_mem_location));
-                            self.assembly_code.push(AsmInstruction::SET(num.clone()));
-                            self.assembly_code
-                                .push(AsmInstruction::STORE(var_mem_location));
-                        }
-                        Value::Identifier(ident) => {
-                            if let Some(idx) = &ident.index {
-                                unimplemented!("{:?} not implemented yet", expression)
-                            } else {
-                                let src_mem_location = self.get_variable(&ident.name).Memory;
-                                let var_mem_location = var.Memory;
-                                self.assembly_code
-                                    .push(AsmInstruction::LOAD(src_mem_location));
-                                self.assembly_code
-                                    .push(AsmInstruction::STORE(var_mem_location));
-                            }
-                        }
-                    },
-                    _ => {
-                        unimplemented!("{:?} not implemented yet", expression)
+                    Expression::Value(value) => {
+                        self.generate_value(value);
+                        self.store_to_identifier(identifier);
                     }
+                    Expression::Addition(left, right) => {
+                        self.generate_value(left);
+                        self.assembly_code.push(AsmInstruction::STORE(self.next_memory_slot));
+                        self.generate_value(right);
+                        self.assembly_code.push(AsmInstruction::ADD(self.next_memory_slot));
+                        self.store_to_identifier(identifier);
+                    }
+                    _ => unimplemented!("Expression {:?} not implemented yet", expression),
+                }
+            }
+            Command::Read(identifier) => {
+                if let Some(idx) = &identifier.index {
+                    match idx {
+                        Either::Left(idx_name) => {
+                            let base_loc = self.get_variable(&identifier.name).memory;
+                            let idx_loc = self.get_variable(idx_name).memory;
+                            
+                            self.assembly_code.push(AsmInstruction::SET(base_loc as i64));
+                            self.assembly_code.push(AsmInstruction::ADD(idx_loc));
+                            self.assembly_code.push(AsmInstruction::STORE(self.next_memory_slot));
+                            self.assembly_code.push(AsmInstruction::GET(0));
+                            self.assembly_code.push(AsmInstruction::STOREI(self.next_memory_slot));
+                        }
+                        Either::Right(idx_num) => {
+                            let loc = self.get_variable_w_idx(&identifier.name, *idx_num).memory;
+                            self.assembly_code.push(AsmInstruction::GET(loc));
+                        }
+                    }
+                } else {
+                    let loc = self.get_variable(&identifier.name).memory;
+                    self.assembly_code.push(AsmInstruction::GET(loc));
                 }
             }
             Command::Write(value) => {
-                let mem_location_to_write;
-                match value {
-                    Value::Identifier(ident) => {
-                        let var = self.get_variable(&ident.name);
-                        mem_location_to_write = var.Memory;
-                    }
-                    Value::Number(num) => {
-                        mem_location_to_write = self.next_memory_slot;
-                        self.assembly_code
-                            .push(AsmInstruction::LOAD(mem_location_to_write));
-                        self.assembly_code.push(AsmInstruction::SET(num.clone()));
-                        self.assembly_code
-                            .push(AsmInstruction::STORE(mem_location_to_write));
-                    }
-                }
-                self.assembly_code
-                    .push(AsmInstruction::PUT(mem_location_to_write));
+                self.generate_value(value);
+                self.assembly_code.push(AsmInstruction::PUT(0));
             }
             _ => {
                 unimplemented!("command {:?} not implemented yet", command)
@@ -963,5 +1073,6 @@ impl CodeGenerator {
         }
 
         self.assembly_code.push(AsmInstruction::HALT);
+        println!("{:?}", self.variables);
     }
 }

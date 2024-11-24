@@ -1,11 +1,13 @@
+#type: ignore
 import openai
 import argparse
 
 openai.api_key = "YOUR_API_KEY"
 
+
 def compile(input_file, output_file):
 
-    additional_text = """
+    compile_insrtuctions = """
     this is the language grammar
 
     program_all  -> procedures main
@@ -103,23 +105,22 @@ RTRN i ; k = p_i ; 10
 HALT ; stops program ; cost 0
 
 
-plese compile the program below, wirte any errors. 
+please compile the program below, write any errors. 
     """
 
     try:
-        with open(input_file, 'r', encoding='utf-8') as file:
-            prompt = file.read().strip()
+        with open(input_file, "r", encoding="utf-8") as file:
+            code = file.read().strip()
 
-        full_prompt = f"{additional_text}\n\n{prompt}"
+        full_prompt = f"{compile_insrtuctions}\n\n{code}"
 
         response = openai.ChatCompletion.create(
-            model="gpt-4",  
-            messages=[{"role": "user", "content": full_prompt}]
+            model="gpt-4", messages=[{"role": "user", "content": full_prompt}]
         )
 
-        response_text = response['choices'][0]['message']['content']
+        response_text = response["choices"][0]["message"]["content"]
 
-        with open(output_file, 'w', encoding='utf-8') as file:
+        with open(output_file, "w", encoding="utf-8") as file:
             file.write(response_text)
 
         print(f"Response written to {output_file}")
@@ -127,15 +128,16 @@ plese compile the program below, wirte any errors.
     except Exception as e:
         print(f"An error occurred: {e}")
 
+
 def main():
     parser = argparse.ArgumentParser(description="compiles a program")
     parser.add_argument("input_file", help="")
     parser.add_argument("output_file", help="")
 
-    
     args = parser.parse_args()
 
-    compile(args.input_file, args.output_file, args.additional_text)
+    compile(args.input_file, args.output_file)
+
 
 if __name__ == "__main__":
     main()
