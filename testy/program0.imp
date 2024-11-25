@@ -5,7 +5,7 @@ BEGIN
 	READ n;
 	REPEAT
 		p:=n/2;
-		p:=2*p;
+		p:=p*2;
 		IF n>p THEN 
 			WRITE 1;
 		ELSE 

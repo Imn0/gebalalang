@@ -56,8 +56,8 @@ void yyerror( vector< pair<int,long long> > & program, char const *s )
 
 void run_parser( vector< pair<int,long long> > & program, FILE * data ) 
 {
-  cout << cBlue << "Czytanie kodu." << cReset << endl;
+  cerr << cBlue << "Czytanie kodu." << cReset << endl;
   yyset_in( data );
   yyparse( program );
-  cout << cBlue << "Skończono czytanie kodu (liczba rozkazów: " << program.size() << ")." << cReset << endl;
+  cerr << cBlue << "Skończono czytanie kodu (liczba rozkazów: " << program.size() << ")." << cReset << endl;
 }

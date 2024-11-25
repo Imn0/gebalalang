@@ -1,9 +1,10 @@
+#pragma test in(12) out(12, 12)
+#pragma test in(1) out(1, 1)
+
 PROGRAM IS 
-    a,sito[-5:3],d
+    a
 BEGIN
     READ a;
-    READ d;
-    sito[a]:=3;
-    sito[d] := sito[a] + 2;
-    WRITE sito[d];
+    WRITE a;
+    WRITE a;
 END

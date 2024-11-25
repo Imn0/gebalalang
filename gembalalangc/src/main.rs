@@ -1,11 +1,7 @@
 use clap::Parser;
-use std::arch::x86_64::_SIDD_LEAST_SIGNIFICANT;
 use std::fs::File;
-use std::io::prelude::*;
 use std::io::Write;
 use std::ops::Not;
-use std::process::{exit, id};
-use std::string;
 use std::{collections::HashMap, fmt, fs, vec};
 use tree_sitter_gbl::LANGUAGE;
 
@@ -1109,6 +1105,48 @@ impl CodeGenerator {
                         .push(AsmInstruction::ADD(self.next_memory_slot));
                     self.store_to_identifier(identifier);
                 }
+                Expression::Subtraction(left, right) => {
+                    self.generate_value(left);
+                    self.assembly_code
+                        .push(AsmInstruction::STORE(self.next_memory_slot));
+                    self.generate_value(right);
+                    self.assembly_code
+                        .push(AsmInstruction::SUB(self.next_memory_slot));
+                    self.store_to_identifier(identifier);
+                }
+                Expression::Division(left, right) => {
+                    self.generate_value(left);
+                    self.assembly_code
+                        .push(AsmInstruction::STORE(self.next_memory_slot));
+
+                    match right {
+                        Value::Number(val) => {
+                            if val.clone() != 2 {
+                                unimplemented!()
+                            }
+                        }
+                        _ => unimplemented!(),
+                    }
+                    self.assembly_code.push(AsmInstruction::HALF);
+                    self.store_to_identifier(identifier);
+                }
+                Expression::Multiplication(left, right) => {
+                    self.generate_value(left);
+                    self.assembly_code
+                        .push(AsmInstruction::STORE(self.next_memory_slot));
+
+                    match right {
+                        Value::Number(val) => {
+                            if val.clone() != 2 {
+                                unimplemented!()
+                            }
+                        }
+                        _ => unimplemented!(),
+                    }
+                    self.assembly_code
+                        .push(AsmInstruction::ADD(self.next_memory_slot));
+                    self.store_to_identifier(identifier);
+                }
                 _ => unimplemented!("Expression {:?} not implemented yet", expression),
             },
             Command::Read(identifier) => {
@@ -1262,7 +1300,18 @@ impl CodeGenerator {
                     self.genearate_command(cmd);
                 }
 
-                let jump_instruction = self.generate_condition(&(!condition.clone()));
+                let jump_instruction;
+                match condition {
+                    Condition::Equal(l, r) => {
+                        jump_instruction = self.generate_condition(&(condition.clone()));
+                    }
+                    Condition::NotEqual(l, r) => {
+                        jump_instruction = self.generate_condition(&(condition.clone()));
+                    }
+                    _ => {
+                        jump_instruction = self.generate_condition(&!(condition.clone()));
+                    }
+                }
                 let jump_pos = self.assembly_code.len();
                 self.assembly_code.push(jump_instruction);
                 let after_condition = self.assembly_code.len() as i64;
@@ -1270,16 +1319,16 @@ impl CodeGenerator {
                 if let Some(instruction) = self.assembly_code.get_mut(jump_pos) {
                     match instruction {
                         AsmInstruction::JZERO(offset) => {
-                            *offset = loop_start - after_condition+1;
+                            *offset = loop_start - after_condition + 1;
                         }
                         AsmInstruction::JPOS(offset) => {
-                            *offset = loop_start - after_condition+1;
+                            *offset = loop_start - after_condition + 1;
                         }
                         AsmInstruction::JNEG(offset) => {
-                            *offset = loop_start - after_condition+1;
+                            *offset = loop_start - after_condition + 1;
                         }
                         AsmInstruction::JUMP(offset) => {
-                            *offset = loop_start - after_condition+1;
+                            *offset = loop_start - after_condition + 1;
                         }
                         _ => {}
                     }
