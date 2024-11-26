@@ -1,11 +1,19 @@
-program_all  -> procedures main  ✅
+TODO 
+proc_call valid check
+tests for proc_call
+add scope to variables
+more tests 
+for loops
+OPTIMIZATION
 
-procedures   -> procedures PROCEDURE proc_head IS declarations BEGIN commands END   ✅
-             | procedures PROCEDURE proc_head IS BEGIN commands END                 ✅
+program_all  -> procedures main  ✅ ✅
+
+procedures   -> procedures PROCEDURE proc_head IS declarations BEGIN commands END   ✅ ✅
+             | procedures PROCEDURE proc_head IS BEGIN commands END                 ✅ ✅
              | 
 
-main         -> PROGRAM IS declarations BEGIN commands END ✅
-             | PROGRAM IS BEGIN commands END ✅
+main         -> PROGRAM IS declarations BEGIN commands END ✅ ✅
+             | PROGRAM IS BEGIN commands END ✅ ✅
 
 commands     -> commands command ✅ ✅
              | command ✅ ✅
@@ -17,23 +25,23 @@ command      -> identifier := expression;                                   ✅ 
              | REPEAT commands UNTIL condition;                             ✅ ✅
              | FOR pidentifier FROM value TO value DO commands ENDFOR       ✅
              | FOR pidentifier FROM value DOWNTO value DO commands ENDFOR   ✅
-             | proc_call;                                                   ✅
+             | proc_call;                                                   ✅ ✅
              | READ identifier;                                             ✅ ✅
              | WRITE value;                                                 ✅ ✅
 
 proc_head    -> pidentifier ( args_decl )   
 
-proc_call    -> pidentifier ( args )                ✅
+proc_call    -> pidentifier ( args )                ✅ ✅
 
 declarations -> declarations, pidentifier           ✅ ✅
              | declarations, pidentifier[num:num]   ✅ ✅
              | pidentifier                          ✅ ✅
              | pidentifier[num:num]                 ✅ ✅
 
-args_decl    -> args_decl, pidentifier
-             | args_decl, T pidentifier
-             | pidentifier
-             | T pidentifier
+args_decl    -> args_decl, pidentifier      ✅ ✅
+             | args_decl, T pidentifier     ✅ ✅
+             | pidentifier                  ✅ ✅
+             | T pidentifier                ✅ ✅
 
 args         -> args, pidentifier   ✅
              | pidentifier          ✅

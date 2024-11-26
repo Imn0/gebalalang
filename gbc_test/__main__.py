@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import subprocess
 
 
-test_files = ["./testy/custom/basic1.gbl", "./testy/custom/basic2.gbl"]
+test_files = ["./testy/custom/basic1.gbl", "./testy/custom/basic2.gbl", "./testy/custom/proc1.gbl"]
 vm_path = "./maszyna_wirtualna/maszyna-wirtualna"
 gblc_path = "./gembalalangc/target/debug/gembalalangc"
 
