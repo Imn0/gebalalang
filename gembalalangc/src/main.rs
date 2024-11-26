@@ -1,6 +1,7 @@
 use clap::Parser;
+use std::cmp::Ordering;
 use std::fs::File;
-use std::io::Write;
+use std::io::{self, Write};
 use std::ops::Not;
 use std::{collections::HashMap, fmt, fs, vec};
 use tree_sitter_gbl::LANGUAGE;
@@ -9,6 +10,7 @@ use tree_sitter_gbl::LANGUAGE;
 pub struct Ast {
     pub procedures: Vec<Procedure>,
     pub main_block: Block,
+    pub location: (tree_sitter::Point, tree_sitter::Point),
 }
 
 #[derive(Debug, Clone)]
@@ -17,12 +19,14 @@ pub struct Procedure {
     pub args: Vec<ProcArgument>,
     pub declarations: Vec<Declaration>,
     pub commands: Vec<Command>,
+    pub location: (tree_sitter::Point, tree_sitter::Point),
 }
 
 #[derive(Debug, Clone)]
 pub struct Block {
     pub declarations: Vec<Declaration>,
     pub commands: Vec<Command>,
+    pub location: (tree_sitter::Point, tree_sitter::Point),
 }
 
 #[derive(Debug, Clone)]
@@ -30,23 +34,28 @@ pub enum Command {
     Assignment {
         identifier: Identifier,
         expression: Expression,
+        location: (tree_sitter::Point, tree_sitter::Point),
     },
     IfElse {
         condition: Condition,
         then_commands: Vec<Command>,
         else_commands: Vec<Command>,
+        location: (tree_sitter::Point, tree_sitter::Point),
     },
     If {
         condition: Condition,
         then_commands: Vec<Command>,
+        location: (tree_sitter::Point, tree_sitter::Point),
     },
     While {
         condition: Condition,
         commands: Vec<Command>,
+        location: (tree_sitter::Point, tree_sitter::Point),
     },
     Repeat {
         commands: Vec<Command>,
         condition: Condition,
+        location: (tree_sitter::Point, tree_sitter::Point),
     },
     For {
         variable: String,
@@ -54,10 +63,12 @@ pub enum Command {
         to: Value,
         direction: ForDirection,
         commands: Vec<Command>,
+        location: (tree_sitter::Point, tree_sitter::Point),
     },
     ProcedureCall {
         proc_name: String,
         arguments: Vec<Identifier>,
+        location: (tree_sitter::Point, tree_sitter::Point),
     },
     Read(Identifier),
     Write(Value),
@@ -114,6 +125,7 @@ pub enum Value {
 pub struct Identifier {
     pub name: String,
     pub index: Option<Either<String, i64>>,
+    pub location: (tree_sitter::Point, tree_sitter::Point),
 }
 
 #[derive(Debug, Clone)]
@@ -132,6 +144,7 @@ pub struct ProcArgument {
 pub struct Declaration {
     pub name: String,
     pub array_size: Option<(i64, i64)>,
+    pub location: (tree_sitter::Point, tree_sitter::Point),
 }
 
 // AST Builder
@@ -146,6 +159,8 @@ impl<'a> AstBuilder<'a> {
 
     pub fn build_ast(&self, tree: &tree_sitter::Tree) -> Ast {
         let root_node = tree.root_node();
+        let start = root_node.start_position();
+        let end = root_node.end_position();
 
         let mut procedures = Vec::new();
         let mut main_block = None;
@@ -167,10 +182,14 @@ impl<'a> AstBuilder<'a> {
         Ast {
             procedures,
             main_block: main_block.expect("Main block not found"),
+            location: (start, end),
         }
     }
 
     fn parse_procedure(&self, node: &tree_sitter::Node) -> Result<Procedure, String> {
+        let start = node.start_position();
+        let end = node.end_position();
+
         let mut procedure_name = String::new();
         let mut args = Vec::new();
         let mut declarations = Vec::new();
@@ -227,10 +246,14 @@ impl<'a> AstBuilder<'a> {
             args,
             declarations,
             commands,
+            location: (start, end),
         })
     }
 
     fn build_main_block(&self, node: &tree_sitter::Node) -> Block {
+        let start = node.start_position();
+        let end = node.end_position();
+        let location = (start, end);
         let mut declarations = Vec::new();
         let mut commands = Vec::new();
 
@@ -251,6 +274,7 @@ impl<'a> AstBuilder<'a> {
         Block {
             declarations,
             commands,
+            location,
         }
     }
     fn build_commands(&self, node: &tree_sitter::Node) -> Vec<Command> {
@@ -268,6 +292,9 @@ impl<'a> AstBuilder<'a> {
     }
 
     fn parse_command(&self, node: &tree_sitter::Node) -> Result<Command, String> {
+        let start = node.start_position();
+        let end = node.end_position();
+        let location = (start, end);
         for child in node.children(&mut node.walk()) {
             match child.kind() {
                 _ if self.is_assignment_command(&child) => {
@@ -278,6 +305,7 @@ impl<'a> AstBuilder<'a> {
                     return Ok(Command::Assignment {
                         identifier,
                         expression,
+                        location,
                     });
                 }
                 "proc_call" => {
@@ -290,6 +318,7 @@ impl<'a> AstBuilder<'a> {
                             arguments.push(Identifier {
                                 name: self.extract_text(&arg_node),
                                 index: None,
+                                location,
                             });
                         }
                     }
@@ -297,6 +326,7 @@ impl<'a> AstBuilder<'a> {
                     return Ok(Command::ProcedureCall {
                         proc_name,
                         arguments: arguments,
+                        location,
                     });
                 }
                 "WHILE" => {
@@ -309,6 +339,7 @@ impl<'a> AstBuilder<'a> {
                     return Ok(Command::While {
                         condition: condition,
                         commands: commands,
+                        location,
                     });
                 }
                 "REPEAT" => {
@@ -321,6 +352,7 @@ impl<'a> AstBuilder<'a> {
                     return Ok(Command::Repeat {
                         condition: condition,
                         commands: commands,
+                        location,
                     });
                 }
                 "FOR" => {
@@ -339,7 +371,7 @@ impl<'a> AstBuilder<'a> {
                     } else {
                         return Err(format!(
                             "Unsupported for direction {}",
-                            from_node.next_sibling().unwrap().kind()
+                            from_node.next_sibling().unwrap().kind(),
                         ));
                     }
 
@@ -355,6 +387,7 @@ impl<'a> AstBuilder<'a> {
                         to: to,
                         direction: direction,
                         commands: commands,
+                        location,
                     });
                 }
                 "IF" => {
@@ -374,11 +407,13 @@ impl<'a> AstBuilder<'a> {
                             condition: condition,
                             then_commands: then_commands,
                             else_commands: else_commands,
+                            location,
                         });
                     } else {
                         return Ok(Command::If {
                             condition: condition,
                             then_commands: then_commands,
+                            location,
                         });
                     }
                 }
@@ -464,6 +499,9 @@ impl<'a> AstBuilder<'a> {
 
     fn build_declaration(&self, node: &tree_sitter::Node) -> Option<Declaration> {
         for child in node.children(&mut node.walk()) {
+            let start = child.start_position();
+            let end = child.end_position();
+            let location = (start, end);
             match child.kind() {
                 "pidentifier" => {
                     if let Some(next_sibling) = child.next_sibling() {
@@ -479,6 +517,7 @@ impl<'a> AstBuilder<'a> {
                                 return Some(Declaration {
                                     name: self.extract_text(&child),
                                     array_size: Some((start, end)),
+                                    location: location,
                                 });
                             }
                         }
@@ -487,6 +526,7 @@ impl<'a> AstBuilder<'a> {
                     return Some(Declaration {
                         name: self.extract_text(&child),
                         array_size: None,
+                        location: location,
                     });
                 }
                 _ => {
@@ -521,9 +561,10 @@ impl<'a> AstBuilder<'a> {
     }
 
     fn parse_identifier(&self, node: &tree_sitter::Node) -> Result<Identifier, String> {
+        let start = node.start_position();
+        let end = node.start_position();
         let mut name = String::new();
         let mut index = None;
-
         for child in node.named_children(&mut node.walk()) {
             match child.kind() {
                 "pidentifier" => {
@@ -546,7 +587,11 @@ impl<'a> AstBuilder<'a> {
             }
         }
 
-        Ok(Identifier { name, index })
+        Ok(Identifier {
+            name,
+            index,
+            location: (start, end),
+        })
     }
 
     fn is_assignment_command(&self, node: &tree_sitter::Node) -> bool {
@@ -580,19 +625,12 @@ struct Args {
     out: String,
 }
 
-#[derive(Debug)]
-struct ErrorDetails {
-    message: String,
-    start: tree_sitter::Point,
-    end: tree_sitter::Point,
-}
-
 fn find_most_specific_error(node: tree_sitter::Node, code: &str) -> ErrorDetails {
     if node.is_error() {
         return ErrorDetails {
             message: format!("Syntax error in {}", node.kind()),
-            start: node.start_position(),
-            end: node.end_position(),
+            location: (node.start_position(), node.end_position()),
+            severity: MessageSeverity::ERROR,
         };
     }
 
@@ -620,8 +658,8 @@ fn find_most_specific_error(node: tree_sitter::Node, code: &str) -> ErrorDetails
 
     ErrorDetails {
         message: format!("Syntax error in {}", node.kind()),
-        start: node.start_position(),
-        end: node.end_position(),
+        location: (node.start_position(), node.end_position()),
+        severity: MessageSeverity::ERROR,
     }
 }
 
@@ -636,51 +674,150 @@ fn count_node_depth(node: tree_sitter::Node) -> usize {
 
     depth
 }
-fn print_error_with_context(code: &str, error: &ErrorDetails) {
-    let lines: Vec<&str> = code.lines().collect();
 
-    let start_line = error.start.row.max(0);
-    let end_line = error.end.row.min(lines.len() - 1);
+#[derive(Debug, Clone)]
+pub struct ErrorDetails {
+    pub message: String,
+    pub location: (tree_sitter::Point, tree_sitter::Point),
+    pub severity: MessageSeverity,
+}
 
-    eprintln!("\x1b[1;31m{}\x1b[0m", error.message);
-    eprintln!("");
-
-    for (line_index, &line) in lines[start_line..=end_line].iter().enumerate() {
-        let actual_line_num = start_line + line_index + 1;
-
-        eprint!("\x1b[1;34m{:4} |\x1b[0m ", actual_line_num);
-
-        eprintln!("{}", line);
-
-        if actual_line_num - 1 == error.start.row {
-            eprint!("\x1b[1;34m     |\x1b[0m ");
-
-            for _ in 0..error.start.column {
-                eprint!(" ");
-            }
-
-            eprint!("\x1b[1;31m^\x1b[0m");
-
-            if error.end.column > error.start.column {
-                for _ in error.start.column + 1..error.end.column {
-                    eprint!("\x1b[1;31m^\x1b[0m");
-                }
-            }
-
-            eprintln!(" \x1b[1;31mError here\x1b[0m");
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MessageSeverity {
+    DEBUG,
+    INFO,
+    WARNING,
+    ERROR,
+    FATAL,
+}
+impl MessageSeverity {
+    fn color_code(&self) -> &str {
+        match self {
+            MessageSeverity::DEBUG => "\x1b[90m",   // Gray
+            MessageSeverity::INFO => "\x1b[34m",    // Blue
+            MessageSeverity::WARNING => "\x1b[33m", // Yellow
+            MessageSeverity::ERROR => "\x1b[31m",   // Red
+            MessageSeverity::FATAL => "\x1b[1;31m", // Bright Red
         }
+    }
+
+    fn prefix(&self) -> &str {
+        match self {
+            MessageSeverity::DEBUG => "[DEBUG] ",
+            MessageSeverity::INFO => "[INFO]  ",
+            MessageSeverity::WARNING => "[WARN]  ",
+            MessageSeverity::ERROR => "[ERROR] ",
+            MessageSeverity::FATAL => "[FATAL] ",
+        }
+    }
+}
+
+pub struct SourceContext<'a> {
+    code: &'a str,
+    filename: &'a str,
+    messages: Vec<ErrorDetails>,
+}
+
+impl<'a> SourceContext<'a> {
+    pub fn new(code: &'a str, filename: &'a str) -> Self {
+        Self {
+            code,
+            filename,
+            messages: Vec::new(),
+        }
+    }
+
+    pub fn add_message(&mut self, message: ErrorDetails) {
+        self.messages.push(message);
+    }
+
+    pub fn add_messages(&mut self, messages: Vec<ErrorDetails>) {
+        self.messages.extend(messages);
+    }
+
+    pub fn display(&self) -> io::Result<()> {
+        let mut sorted_messages = self.messages.clone();
+        sorted_messages.sort_by(|a, b| match a.location.0.row.cmp(&b.location.0.row) {
+            Ordering::Equal => b.severity.cmp(&a.severity),
+            row_order => row_order,
+        });
+
+        let stderr = &mut io::stderr();
+        let lines: Vec<&str> = self.code.lines().collect();
+
+        for error in sorted_messages {
+            let start_line = error.location.0.row.max(0);
+
+            writeln!(
+                stderr,
+                "{}{}{}\x1b[0m",
+                error.severity.color_code(),
+                error.severity.prefix(),
+                error.message
+            )?;
+            writeln!(
+                stderr,
+                "\x1b[1;34m{:4}\x1b[0m {} {}:{}:{}",
+                "",
+                "--->",
+                self.filename,
+                start_line + 1,
+                error.location.1.column + 1
+            )?;
+            writeln!(
+                stderr,
+                "\x1b[1;34m{:4} |\x1b[0m {}",
+                start_line + 1,
+                lines[start_line]
+            )?;
+
+            if start_line == error.location.0.row {
+                write!(stderr, "\x1b[1;34m     |\x1b[0m ")?;
+
+                for _ in 0..error.location.0.column {
+                    write!(stderr, " ")?;
+                }
+
+                write!(stderr, "{}", error.severity.color_code())?;
+                write!(stderr, "^")?;
+
+                if error.location.1.column > error.location.0.column {
+                    for _ in error.location.0.column + 1..error.location.1.column {
+                        write!(stderr, "^")?;
+                    }
+                }
+
+                writeln!(
+                    stderr,
+                    " {}\x1b[0m",
+                    match error.severity {
+                        MessageSeverity::DEBUG => "debug point",
+                        MessageSeverity::INFO => "info point",
+                        MessageSeverity::WARNING => "warning",
+                        MessageSeverity::ERROR => "error",
+                        MessageSeverity::FATAL => "fatal error",
+                    }
+                )?;
+            }
+
+            writeln!(stderr)?;
+        }
+
+        Ok(())
     }
 }
 
 fn main() -> std::io::Result<()> {
     let args = Args::parse();
+    let input_file = args.input;
 
     let mut parser = tree_sitter::Parser::new();
     parser
         .set_language(&LANGUAGE.into())
         .expect("Error loading Gbl parser");
 
-    let code = fs::read_to_string(args.input).expect("Should have been able to read the file");
+    let code =
+        fs::read_to_string(input_file.clone()).expect("Should have been able to read the file");
 
     let ast_builder = AstBuilder::new(&code);
     let tree = parser
@@ -690,19 +827,34 @@ fn main() -> std::io::Result<()> {
     let root_node = tree.root_node();
 
     if root_node.has_error() {
-        // Find and report the most specific error
         let error_details = find_most_specific_error(root_node, &code);
-
-        print_error_with_context(&code, &error_details);
-
+        let mut context = SourceContext::new(code.as_str(), &input_file);
+        context.add_message(error_details);
+        context.display()?;
         std::process::exit(1);
     }
 
     let ast = ast_builder.build_ast(&tree);
-    print!("{:#?}", ast);
+    // print!("{:#?}", ast);
     let optimized_ast = optimize_ast(ast);
     let mut codeb = CodeGenerator::new();
     codeb.generate_asm(optimized_ast);
+
+    let is_error: bool = codeb
+        .messages
+        .iter()
+        .filter(|m| m.severity == MessageSeverity::ERROR || m.severity == MessageSeverity::FATAL)
+        .collect::<Vec<&ErrorDetails>>()
+        .len()
+        > 0;
+
+    let mut context = SourceContext::new(code.as_str(), &input_file);
+    context.add_messages(codeb.messages);
+    context.display()?;
+
+    if is_error {
+        std::process::exit(1);
+    }
 
     let asm: Vec<AsmInstruction> = codeb.assembly_code;
 
@@ -859,7 +1011,7 @@ impl fmt::Display for AsmInstruction {
 #[derive(Debug, Clone)]
 struct VariableLocation {
     memory: usize,
-    is_pointer: bool,
+    is_array: bool,
 }
 
 struct CodeGenerator {
@@ -868,6 +1020,8 @@ struct CodeGenerator {
     next_memory_slot: usize,
 
     assembly_code: Vec<AsmInstruction>,
+
+    messages: Vec<ErrorDetails>,
 }
 
 impl CodeGenerator {
@@ -876,6 +1030,7 @@ impl CodeGenerator {
             variables: HashMap::new(),
             next_memory_slot: 1,
             assembly_code: Vec::new(),
+            messages: Vec::new(),
         }
     }
 
@@ -904,7 +1059,7 @@ impl CodeGenerator {
                 name,
                 VariableLocation {
                     memory: self.next_memory_slot,
-                    is_pointer: false,
+                    is_array: false,
                 },
             );
             self.next_memory_slot += 1;
@@ -920,7 +1075,7 @@ impl CodeGenerator {
                 name,
                 VariableLocation {
                     memory: self.next_memory_slot,
-                    is_pointer: false,
+                    is_array: true,
                 },
             );
             self.next_memory_slot += usize::try_from(right).unwrap() + 1;
@@ -933,7 +1088,7 @@ impl CodeGenerator {
                 name,
                 VariableLocation {
                     memory: self.next_memory_slot,
-                    is_pointer: false,
+                    is_array: true,
                 },
             );
             self.next_memory_slot += usize::try_from(right).unwrap() + 1;
@@ -946,7 +1101,7 @@ impl CodeGenerator {
                 name,
                 VariableLocation {
                     memory: self.next_memory_slot,
-                    is_pointer: false,
+                    is_array: true,
                 },
             );
             self.next_memory_slot -= usize::try_from(-right).unwrap();
@@ -967,25 +1122,53 @@ impl CodeGenerator {
                 if let Some(idx) = &ident.index {
                     match idx {
                         Either::Left(idx_name) => {
-                            let base_loc = self.get_variable(&ident.name).memory;
-                            let idx_loc = self.get_variable(idx_name).memory;
+                            let base_loc = self.get_variable(&ident.name);
+                            if !base_loc.is_array {
+                                self.messages.push(ErrorDetails {
+                                    message: "cannot acces it like that".to_owned(),
+                                    location: ident.location,
+                                    severity: MessageSeverity::WARNING,
+                                });
+                            }
+                            let idx_loc = self.get_variable(idx_name);
+                            if idx_loc.is_array {
+                                self.messages.push(ErrorDetails {
+                                    message: "cannot acces it like that".to_owned(),
+                                    location: ident.location,
+                                    severity: MessageSeverity::WARNING,
+                                });
+                            }
 
                             self.assembly_code
-                                .push(AsmInstruction::SET(base_loc as i64));
-                            self.assembly_code.push(AsmInstruction::ADD(idx_loc));
+                                .push(AsmInstruction::SET(base_loc.memory as i64));
+                            self.assembly_code.push(AsmInstruction::ADD(idx_loc.memory));
                             self.assembly_code
                                 .push(AsmInstruction::STORE(self.next_memory_slot));
                             self.assembly_code
                                 .push(AsmInstruction::LOADI(self.next_memory_slot));
                         }
                         Either::Right(idx_num) => {
-                            let loc = self.get_variable_w_idx(&ident.name, *idx_num).memory;
-                            self.assembly_code.push(AsmInstruction::LOAD(loc));
+                            let loc = self.get_variable_w_idx(&ident.name, *idx_num);
+                            if !loc.is_array {
+                                self.messages.push(ErrorDetails {
+                                    message: "cannot acces it like that".to_owned(),
+                                    location: ident.location,
+                                    severity: MessageSeverity::WARNING,
+                                });
+                            }
+                            self.assembly_code.push(AsmInstruction::LOAD(loc.memory));
                         }
                     }
                 } else {
-                    let loc = self.get_variable(&ident.name).memory;
-                    self.assembly_code.push(AsmInstruction::LOAD(loc));
+                    let loc = self.get_variable(&ident.name);
+                    if loc.is_array {
+                        self.messages.push(ErrorDetails {
+                            message: "cannot acces it like that".to_owned(),
+                            location: ident.location,
+                            severity: MessageSeverity::WARNING,
+                        });
+                    }
+                    self.assembly_code.push(AsmInstruction::LOAD(loc.memory));
                 }
             }
         }
@@ -999,12 +1182,26 @@ impl CodeGenerator {
                     self.assembly_code
                         .push(AsmInstruction::STORE(self.next_memory_slot + 1));
 
-                    let base_loc = self.get_variable(&ident.name).memory;
-                    let idx_loc = self.get_variable(idx_name).memory;
+                    let base_loc = self.get_variable(&ident.name);
+                    if !base_loc.is_array {
+                        self.messages.push(ErrorDetails {
+                            message: "cannot acces it like that".to_owned(),
+                            location: ident.location,
+                            severity: MessageSeverity::WARNING,
+                        });
+                    }
+                    let idx_loc = self.get_variable(idx_name);
+                    if idx_loc.is_array {
+                        self.messages.push(ErrorDetails {
+                            message: "cannot acces it like that".to_owned(),
+                            location: ident.location,
+                            severity: MessageSeverity::WARNING,
+                        });
+                    }
 
                     self.assembly_code
-                        .push(AsmInstruction::SET(base_loc as i64));
-                    self.assembly_code.push(AsmInstruction::ADD(idx_loc));
+                        .push(AsmInstruction::SET(base_loc.memory as i64));
+                    self.assembly_code.push(AsmInstruction::ADD(idx_loc.memory));
                     self.assembly_code
                         .push(AsmInstruction::STORE(self.next_memory_slot));
 
@@ -1014,13 +1211,29 @@ impl CodeGenerator {
                         .push(AsmInstruction::STOREI(self.next_memory_slot));
                 }
                 Either::Right(idx_num) => {
-                    let dest_loc = self.get_variable_w_idx(&ident.name, *idx_num).memory;
-                    self.assembly_code.push(AsmInstruction::STORE(dest_loc));
+                    let dest_loc = self.get_variable_w_idx(&ident.name, *idx_num);
+                    if !dest_loc.is_array {
+                        self.messages.push(ErrorDetails {
+                            message: "cannot acces it like that".to_owned(),
+                            location: ident.location,
+                            severity: MessageSeverity::WARNING,
+                        });
+                    }
+                    self.assembly_code
+                        .push(AsmInstruction::STORE(dest_loc.memory));
                 }
             }
         } else {
-            let dest_loc = self.get_variable(&ident.name).memory;
-            self.assembly_code.push(AsmInstruction::STORE(dest_loc));
+            let dest_loc = self.get_variable(&ident.name);
+            if dest_loc.is_array {
+                self.messages.push(ErrorDetails {
+                    message: "cannot acces it like that".to_owned(),
+                    location: ident.location,
+                    severity: MessageSeverity::WARNING,
+                });
+            }
+            self.assembly_code
+                .push(AsmInstruction::STORE(dest_loc.memory));
         }
     }
 
@@ -1091,6 +1304,7 @@ impl CodeGenerator {
             Command::Assignment {
                 identifier,
                 expression,
+                location,
             } => match expression {
                 Expression::Value(value) => {
                     self.generate_value(value);
@@ -1122,10 +1336,19 @@ impl CodeGenerator {
                     match right {
                         Value::Number(val) => {
                             if val.clone() != 2 {
-                                unimplemented!()
+                                self.messages.push(ErrorDetails {
+                                    message: "cannot divide by anything else than 2 (for now)"
+                                        .to_owned(),
+                                    location: *location,
+                                    severity: MessageSeverity::ERROR,
+                                });
                             }
                         }
-                        _ => unimplemented!(),
+                        _ => self.messages.push(ErrorDetails {
+                            message: "cannot divide by anything else than 2 (for now)".to_owned(),
+                            location: *location,
+                            severity: MessageSeverity::ERROR,
+                        }),
                     }
                     self.assembly_code.push(AsmInstruction::HALF);
                     self.store_to_identifier(identifier);
@@ -1138,27 +1361,46 @@ impl CodeGenerator {
                     match right {
                         Value::Number(val) => {
                             if val.clone() != 2 {
-                                unimplemented!()
+                                self.messages.push(ErrorDetails {
+                                    message: "cannot multiply by anything else than 2 (for now)"
+                                        .to_owned(),
+                                    location: *location,
+                                    severity: MessageSeverity::ERROR,
+                                })
                             }
                         }
-                        _ => unimplemented!(),
+                        _ => self.messages.push(ErrorDetails {
+                            message: "cannot multiply by anything else than 2 (for now)".to_owned(),
+                            location: *location,
+                            severity: MessageSeverity::ERROR,
+                        }),
                     }
                     self.assembly_code
                         .push(AsmInstruction::ADD(self.next_memory_slot));
                     self.store_to_identifier(identifier);
                 }
-                _ => unimplemented!("Expression {:?} not implemented yet", expression),
+                _ => self.messages.push(ErrorDetails {
+                    message: format!("cannot do {:?} yet", expression),
+                    location: *location,
+                    severity: MessageSeverity::ERROR,
+                }),
             },
             Command::Read(identifier) => {
                 if let Some(idx) = &identifier.index {
                     match idx {
                         Either::Left(idx_name) => {
-                            let base_loc = self.get_variable(&identifier.name).memory;
-                            let idx_loc = self.get_variable(idx_name).memory;
+                            let base_loc = self.get_variable(&identifier.name);
+                            if !base_loc.is_array {
+                                panic!("cannot acces it like that");
+                            }
+                            let idx_loc = self.get_variable(idx_name);
+                            if idx_loc.is_array {
+                                panic!("cannot acces it like that");
+                            }
 
                             self.assembly_code
-                                .push(AsmInstruction::SET(base_loc as i64));
-                            self.assembly_code.push(AsmInstruction::ADD(idx_loc));
+                                .push(AsmInstruction::SET(base_loc.memory as i64));
+                            self.assembly_code.push(AsmInstruction::ADD(idx_loc.memory));
                             self.assembly_code
                                 .push(AsmInstruction::STORE(self.next_memory_slot));
                             self.assembly_code.push(AsmInstruction::GET(0));
@@ -1166,18 +1408,27 @@ impl CodeGenerator {
                                 .push(AsmInstruction::STOREI(self.next_memory_slot));
                         }
                         Either::Right(idx_num) => {
-                            let loc = self.get_variable_w_idx(&identifier.name, *idx_num).memory;
-                            self.assembly_code.push(AsmInstruction::GET(loc));
+                            let dest_loc = self.get_variable_w_idx(&identifier.name, *idx_num);
+                            if !dest_loc.is_array {
+                                panic!("cannot acces it like that");
+                            }
+                            self.assembly_code
+                                .push(AsmInstruction::GET(dest_loc.memory));
                         }
                     }
                 } else {
-                    let loc = self.get_variable(&identifier.name).memory;
-                    self.assembly_code.push(AsmInstruction::GET(loc));
+                    let dest_loc = self.get_variable(&identifier.name);
+                    if dest_loc.is_array {
+                        panic!("cannot acces it like that");
+                    }
+                    self.assembly_code
+                        .push(AsmInstruction::GET(dest_loc.memory));
                 }
             }
             Command::If {
                 condition,
                 then_commands,
+                location,
             } => {
                 let jump_instruction = self.generate_condition(condition);
                 let jump_pos = self.assembly_code.len();
@@ -1210,6 +1461,7 @@ impl CodeGenerator {
                 condition,
                 then_commands,
                 else_commands,
+                location,
             } => {
                 let jump_instruction = self.generate_condition(condition);
                 let jump_pos = self.assembly_code.len();
@@ -1255,6 +1507,7 @@ impl CodeGenerator {
             Command::While {
                 condition,
                 commands,
+                location,
             } => {
                 let before_condition = self.assembly_code.len() as i64;
                 let jump_instruction = self.generate_condition(condition);
@@ -1293,6 +1546,7 @@ impl CodeGenerator {
             Command::Repeat {
                 commands,
                 condition,
+                location,
             } => {
                 let loop_start = self.assembly_code.len() as i64;
 
@@ -1302,10 +1556,10 @@ impl CodeGenerator {
 
                 let jump_instruction;
                 match condition {
-                    Condition::Equal(l, r) => {
+                    Condition::Equal(_l, _r) => {
                         jump_instruction = self.generate_condition(&(condition.clone()));
                     }
-                    Condition::NotEqual(l, r) => {
+                    Condition::NotEqual(_l, _r) => {
                         jump_instruction = self.generate_condition(&(condition.clone()));
                     }
                     _ => {
@@ -1363,6 +1617,6 @@ impl CodeGenerator {
         }
 
         self.assembly_code.push(AsmInstruction::HALT);
-        println!("{:?}", self.variables);
+        // println!("{:?}", self.variables);
     }
 }
