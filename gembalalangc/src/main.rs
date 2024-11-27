@@ -1016,6 +1016,7 @@ struct SymbolLocation {
     is_array: bool,
     is_pointer: bool,
     is_procedure: bool,
+    read_only: bool,
 }
 
 struct CodeGenerator {
@@ -1070,6 +1071,7 @@ impl CodeGenerator {
                 is_array: false,
                 is_pointer: false,
                 is_procedure: true,
+                read_only: true,
             },
         );
         self.next_memory_slot += 1;
@@ -1084,12 +1086,21 @@ impl CodeGenerator {
                 is_array,
                 is_pointer: true,
                 is_procedure: false,
+                read_only: false,
             },
         );
         self.next_memory_slot += 1;
     }
 
-    fn allocate_variable(&mut self, name: String, left: i64, right: i64, is_pointer: bool) {
+    fn allocate_variable(
+        &mut self,
+        name: String,
+        left: i64,
+        right: i64,
+        is_pointer: bool,
+        read_only: bool,
+    ) -> usize {
+        let mem_slot = self.next_memory_slot;
         if left == 0 && right == 0 {
             self.symbols.insert(
                 name,
@@ -1098,10 +1109,11 @@ impl CodeGenerator {
                     is_array: false,
                     is_pointer,
                     is_procedure: false,
+                    read_only: read_only,
                 },
             );
             self.next_memory_slot += 1;
-            return;
+            return mem_slot;
         }
 
         if left > right {
@@ -1116,10 +1128,11 @@ impl CodeGenerator {
                     is_array: true,
                     is_pointer,
                     is_procedure: false,
+                    read_only: read_only,
                 },
             );
             self.next_memory_slot += usize::try_from(right).unwrap() + 1;
-            return;
+            return mem_slot;
         }
 
         if left < 0 && right >= 0 {
@@ -1131,10 +1144,11 @@ impl CodeGenerator {
                     is_array: true,
                     is_pointer,
                     is_procedure: false,
+                    read_only: read_only,
                 },
             );
             self.next_memory_slot += usize::try_from(right).unwrap() + 1;
-            return;
+            return mem_slot;
         }
 
         if left < 0 && right < 0 {
@@ -1146,11 +1160,12 @@ impl CodeGenerator {
                     is_array: true,
                     is_pointer,
                     is_procedure: false,
+                    read_only: read_only,
                 },
             );
             self.next_memory_slot -= usize::try_from(-right).unwrap();
             self.next_memory_slot += 1;
-            return;
+            return mem_slot;
         }
 
         panic!("cant allocate array with dimensions {}:{}", left, right);
@@ -1728,8 +1743,89 @@ impl CodeGenerator {
                 self.assembly_code
                     .push(AsmInstruction::JUMP(jump_dist as i64));
             }
-            _ => {
-                unimplemented!("command {:?} not implemented yet", command)
+            Command::For {
+                variable,
+                from,
+                to,
+                direction,
+                commands,
+                location,
+            } => {
+                let for_iter_loc = self.allocate_variable(variable.to_string(), 0, 0, false, true);
+
+                let for_num_iters = self.last_mem_slot;
+                self.last_mem_slot -= 1;
+
+                self.generate_value(&from);
+                self.push_asm(AsmInstruction::STORE(for_iter_loc));
+
+                self.generate_value(&to);
+                self.push_asm(AsmInstruction::STORE(for_num_iters));
+
+                match direction {
+                    ForDirection::Ascending => {
+                        let loop_start = self.assembly_code.len() as i64;
+
+                        self.push_asm(AsmInstruction::LOAD(for_iter_loc));
+                        self.push_asm(AsmInstruction::SUB(for_num_iters));
+
+                        let jump_instruction = AsmInstruction::JPOS(0);
+                        let jump_pos = self.assembly_code.len();
+                        self.push_asm(jump_instruction);
+
+                        for cmd in commands {
+                            self.genearate_command(cmd);
+                        }
+
+                        self.push_asm(AsmInstruction::LOAD(for_iter_loc));
+                        self.push_asm(AsmInstruction::SET(1));
+                        self.push_asm(AsmInstruction::ADD(for_iter_loc));
+                        self.push_asm(AsmInstruction::STORE(for_iter_loc));
+
+                        self.push_asm(AsmInstruction::JUMP(
+                            loop_start - self.assembly_code.len() as i64,
+                        ));
+
+                        let after_loop = self.assembly_code.len() as i64;
+                        if let Some(instruction) = self.assembly_code.get_mut(jump_pos) {
+                            if let AsmInstruction::JPOS(offset) = instruction {
+                                *offset = after_loop - jump_pos as i64; // -2 to account for LOAD SUB before jump pos 
+                            }
+                        }
+                    }
+                    ForDirection::Descending => {
+                        let loop_start = self.assembly_code.len() as i64;
+
+                        self.push_asm(AsmInstruction::LOAD(for_iter_loc));
+                        self.push_asm(AsmInstruction::SUB(for_num_iters));
+
+                        let jump_instruction = AsmInstruction::JNEG(0);
+                        let jump_pos = self.assembly_code.len();
+                        self.push_asm(jump_instruction);
+
+                        for cmd in commands {
+                            self.genearate_command(cmd);
+                        }
+
+                        self.push_asm(AsmInstruction::LOAD(for_iter_loc));
+                        self.push_asm(AsmInstruction::SET(1));
+                        self.push_asm(AsmInstruction::SUB(for_iter_loc));
+                        self.push_asm(AsmInstruction::STORE(for_iter_loc));
+
+                        self.push_asm(AsmInstruction::JUMP(
+                            loop_start - self.assembly_code.len() as i64,
+                        ));
+
+                        let after_loop = self.assembly_code.len() as i64;
+                        if let Some(instruction) = self.assembly_code.get_mut(jump_pos) {
+                            if let AsmInstruction::JNEG(offset) = instruction {
+                                *offset = after_loop - jump_pos as i64; // -2 to account for LOAD SUB before jump pos 
+                            }
+                        }
+                    }
+                }
+
+                self.last_mem_slot += 1;
             }
         }
     }
@@ -1743,9 +1839,9 @@ impl CodeGenerator {
 
         for declaration in &procedure.declarations {
             if let Some((start, end)) = declaration.array_size {
-                self.allocate_variable(declaration.name.clone(), start, end, false);
+                self.allocate_variable(declaration.name.clone(), start, end, false, false);
             } else {
-                self.allocate_variable(declaration.name.clone(), 0, 0, false);
+                self.allocate_variable(declaration.name.clone(), 0, 0, false, false);
             }
         }
 
@@ -1783,9 +1879,9 @@ impl CodeGenerator {
 
         for declaration in &ast.main_block.declarations {
             if let Some((start, end)) = declaration.array_size {
-                self.allocate_variable(declaration.name.clone(), start, end, false);
+                self.allocate_variable(declaration.name.clone(), start, end, false, false);
             } else {
-                self.allocate_variable(declaration.name.clone(), 0, 0, false);
+                self.allocate_variable(declaration.name.clone(), 0, 0, false, false);
             }
         }
 
