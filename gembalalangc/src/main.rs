@@ -1443,10 +1443,10 @@ impl CodeGenerator {
                     self.store_to_identifier(identifier);
                 }
                 Expression::Subtraction(left, right) => {
-                    self.generate_value(left);
+                    self.generate_value(right);
                     self.assembly_code
                         .push(AsmInstruction::STORE(self.last_mem_slot));
-                    self.generate_value(right);
+                    self.generate_value(left);
                     self.assembly_code
                         .push(AsmInstruction::SUB(self.last_mem_slot));
                     self.store_to_identifier(identifier);
@@ -1631,7 +1631,18 @@ impl CodeGenerator {
                 location,
             } => {
                 let before_condition = self.assembly_code.len() as i64;
-                let jump_instruction = self.generate_condition(condition);
+                let jump_instruction;
+                match condition {
+                    Condition::Equal(_l, _r) => {
+                        jump_instruction = self.generate_condition(&(condition.clone()));
+                    }
+                    Condition::NotEqual(_l, _r) => {
+                        jump_instruction = self.generate_condition(&(condition.clone()));
+                    }
+                    _ => {
+                        jump_instruction = self.generate_condition(&(condition.clone()));
+                    }
+                }
                 let jump_pos = self.assembly_code.len();
                 self.push_asm(jump_instruction);
                 let after_condition = self.assembly_code.len() as i64;
@@ -1789,7 +1800,7 @@ impl CodeGenerator {
                         let after_loop = self.assembly_code.len() as i64;
                         if let Some(instruction) = self.assembly_code.get_mut(jump_pos) {
                             if let AsmInstruction::JPOS(offset) = instruction {
-                                *offset = after_loop - jump_pos as i64; // -2 to account for LOAD SUB before jump pos 
+                                *offset = after_loop - jump_pos as i64; // -2 to account for LOAD SUB before jump pos
                             }
                         }
                     }
@@ -1819,7 +1830,7 @@ impl CodeGenerator {
                         let after_loop = self.assembly_code.len() as i64;
                         if let Some(instruction) = self.assembly_code.get_mut(jump_pos) {
                             if let AsmInstruction::JNEG(offset) = instruction {
-                                *offset = after_loop - jump_pos as i64; // -2 to account for LOAD SUB before jump pos 
+                                *offset = after_loop - jump_pos as i64; // -2 to account for LOAD SUB before jump pos
                             }
                         }
                     }
