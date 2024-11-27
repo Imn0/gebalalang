@@ -837,7 +837,7 @@ fn main() -> std::io::Result<()> {
     }
 
     let ast = ast_builder.build_ast(&tree);
-    print!("{:#?}", ast);
+    // print!("{:#?}", ast);
     let optimized_ast = optimize_ast(ast);
     let mut codeb = CodeGenerator::new();
     codeb.generate_asm(optimized_ast);
@@ -1039,8 +1039,8 @@ impl CodeGenerator {
         }
     }
 
-    fn push_asm(&mut self, instruction: AsmInstruction) {
-        self.assembly_code.push(instruction);
+    fn push_asm(&mut self, ins: AsmInstruction) {
+        self.assembly_code.push(ins);
     }
 
     fn get_variable_w_idx(&self, name: &str, idx: i64) -> SymbolLocation {
@@ -1406,13 +1406,14 @@ impl CodeGenerator {
         }
     }
 
-    fn genearate_command(&mut self, command: &Command) {
-        match command {
-            Command::Assignment {
-                identifier,
-                expression,
-                location,
-            } => match expression {
+    fn generate_expression(&mut self, command: &Command) {
+        if let Command::Assignment {
+            identifier,
+            expression,
+            location,
+        } = command
+        {
+            match expression {
                 Expression::Value(value) => {
                     self.generate_value(value);
                     self.store_to_identifier(identifier);
@@ -1486,12 +1487,46 @@ impl CodeGenerator {
                         .push(AsmInstruction::ADD(self.last_mem_slot));
                     self.store_to_identifier(identifier);
                 }
-                _ => self.messages.push(ErrorDetails {
-                    message: format!("cannot do {:?} yet", expression),
-                    location: *location,
-                    severity: MessageSeverity::ERROR,
-                }),
-            },
+                Expression::Modulo(left, right) => {
+                    match right {
+                        Value::Number(val) => {
+                            if val.clone() != 2 {
+                                self.messages.push(ErrorDetails {
+                                    message: "only mod 2 works now".to_owned(),
+                                    location: *location,
+                                    severity: MessageSeverity::ERROR,
+                                })
+                            }
+                        }
+                        _ => self.messages.push(ErrorDetails {
+                            message: "only mod 2 works now".to_owned(),
+                            location: *location,
+                            severity: MessageSeverity::ERROR,
+                        }),
+                    }
+
+                    self.generate_value(left);
+                    self.push_asm(AsmInstruction::STORE(self.last_mem_slot));
+                    self.push_asm(AsmInstruction::HALF);
+                    self.push_asm(AsmInstruction::ADD(0));
+                    self.push_asm(AsmInstruction::STORE(self.last_mem_slot - 1));
+                    self.push_asm(AsmInstruction::LOAD(self.last_mem_slot));
+                    self.push_asm(AsmInstruction::SUB(self.last_mem_slot - 1));
+                    self.store_to_identifier(identifier);
+                }
+            }
+        } else {
+            panic!();
+        }
+    }
+
+    fn genearate_command(&mut self, command: &Command) {
+        match command {
+            Command::Assignment {
+                identifier: _,
+                expression: _,
+                location: _,
+            } => self.generate_expression(command),
             Command::Read(identifier) => {
                 self.push_asm(AsmInstruction::GET(0));
                 self.store_to_identifier(identifier);

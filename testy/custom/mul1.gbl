@@ -1,0 +1,71 @@
+PROCEDURE mul(a,b) IS 
+    r, x
+BEGIN
+    r := 0; 
+    WHILE a > 0 DO 
+        x:= a%2;
+        IF x=1 THEN
+            r := r + b;
+        ENDIF
+        a := a / 2;
+        b := b*2;
+    ENDWHILE
+    a:=r; 
+END
+
+PROCEDURE divmod(aa, bb) IS 
+    sign, q, c_bb, c_m
+BEGIN
+    sign:=1;
+    IF aa < 0 THEN
+        sign := 0 - sign;
+        aa := 0 - aa;
+    ENDIF
+
+    IF bb < 0 THEN
+        sign := 0 - sign;
+        bb := 0 - bb; 
+    ENDIF
+
+    q := 0;
+    c_bb := bb;
+    c_m := 1;
+
+    WHILE c_bb <= aa DO
+        c_bb := c_bb + c_bb;
+        c_m := c_m + c_m;
+    ENDWHILE
+
+
+    WHILE aa >= bb DO 
+        c_bb := c_bb/2;
+        c_m := c_m/2;
+
+        IF c_bb <= aa THEN
+            aa := aa - c_bb;
+            q := q + c_m;
+        ENDIF
+    ENDWHILE
+    
+    IF sign=-1 THEN
+        q := 0 - q;
+    ENDIF
+
+    bb := q;
+END
+
+
+PROGRAM IS
+    x, y
+BEGIN
+    x:=23;
+    y:=55;
+    mul(x,y);
+    WRITE x;
+
+    y:=20;
+    x:=40;
+    divmod(x,y);
+    WRITE x;
+    WRITE y;
+END
