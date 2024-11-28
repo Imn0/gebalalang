@@ -1303,11 +1303,17 @@ struct SymbolLocation {
     initialized: bool,
 }
 
+#[derive(Clone)]
+struct ProcedureInfo {
+    code_location: usize,
+    args: Vec<bool>,
+}
+
 struct CodeGenerator {
     symbols: HashMap<String, SymbolLocation>,
-    procedure_offsets: HashMap<String, usize>,
+    procedures: HashMap<String, ProcedureInfo>,
     next_memory_slot: usize,
-    pub last_mem_slot: usize,
+    last_mem_slot: usize,
     assembly_code: Vec<AsmInstruction>,
     messages: Vec<ErrorDetails>,
     current_scope: String,
@@ -1317,7 +1323,7 @@ impl CodeGenerator {
     fn new() -> Self {
         CodeGenerator {
             symbols: HashMap::new(),
-            procedure_offsets: HashMap::new(),
+            procedures: HashMap::new(),
             next_memory_slot: 1,
             last_mem_slot: 0x4000000000000000,
             assembly_code: Vec::new(),
@@ -1557,7 +1563,7 @@ impl CodeGenerator {
                                 base_loc = _base_loc;
                             } else {
                                 self.messages.push(ErrorDetails {
-                                    message: "unknown variable".to_owned(),
+                                    message: format!("Unknown variable {}.", ident.name),
                                     location: ident.location,
                                     severity: MessageSeverity::ERROR,
                                 });
@@ -1576,7 +1582,7 @@ impl CodeGenerator {
                                 idx_loc = _idx_loc;
                             } else {
                                 self.messages.push(ErrorDetails {
-                                    message: "unknown variable".to_owned(),
+                                    message: format!("Unknown variable {}.", idx_name),
                                     location: ident.location,
                                     severity: MessageSeverity::ERROR,
                                 });
@@ -2197,8 +2203,24 @@ impl CodeGenerator {
                 arguments,
                 location,
             } => {
-                //TODO validate call
-                let jump_target = self.procedure_offsets.get(proc_name).unwrap().clone() as i64;
+                let proc_info: ProcedureInfo = self.procedures.get(proc_name).unwrap().clone();
+
+                if proc_info.args.len() != arguments.len() {
+                    self.messages.push(ErrorDetails {
+                        message: format!(
+                            "Procedure {} expected {} arguments, got {}.",
+                            proc_name,
+                            proc_info.args.len(),
+                            arguments.len()
+                        ),
+                        location: *location,
+                        severity: MessageSeverity::ERROR,
+                    });
+
+                    return;
+                }
+
+                let jump_target = proc_info.code_location as i64;
                 let return_loc = self.get_variable_global_scope(&proc_name).unwrap();
 
                 for (i, arg) in arguments.iter().enumerate() {
@@ -2209,6 +2231,23 @@ impl CodeGenerator {
                     } else {
                         self.push_asm(AsmInstruction::SET(a.memory as i64));
                         self.push_asm(AsmInstruction::STORE(return_loc.memory + i + 1));
+                    }
+
+                    let arg_is_bool = *proc_info.args.get(i).unwrap();
+                    if a.is_array != arg_is_bool {
+                        let msg;
+                        if a.is_array {
+                            msg = format!("Invalid argument type, expected number got array.");
+                        } else {
+                            msg = format!("Invalid argument type, expected array got number.");
+                        }
+
+                        self.messages.push(ErrorDetails {
+                            message: msg,
+                            location: arg.location,
+                            severity: MessageSeverity::ERROR,
+                        });
+                        return;
                     }
                     self.set_to_initialized_scoped(&arg.name);
                 }
@@ -2322,27 +2361,51 @@ impl CodeGenerator {
     fn generate_procedure(&mut self, procedure: &Procedure) {
         let return_address_location = self.allocate_procedure(procedure.name.clone());
         self.current_scope = format!("${}$", procedure.name.clone());
+
+        let mut args_vec = vec![];
+
         for arg in &procedure.args {
             self.allocate_arg(arg.name.clone(), arg.is_array);
+            args_vec.push(arg.is_array);
         }
 
         for declaration in &procedure.declarations {
             if let Some((start, end)) = declaration.array_size {
-                let _ = self.allocate_variable_scoped(
+                let result = self.allocate_variable_scoped(
                     declaration.name.clone(),
                     start,
                     end,
                     false,
                     false,
                 );
+                if let Err(err) = result {
+                    self.messages.push(ErrorDetails {
+                        message: err,
+                        location: declaration.location,
+                        severity: MessageSeverity::ERROR,
+                    });
+                }
             } else {
-                let _ = self.allocate_variable_scoped(declaration.name.clone(), 0, 0, false, false);
+                let result =
+                    self.allocate_variable_scoped(declaration.name.clone(), 0, 0, false, false);
+                if let Err(err) = result {
+                    self.messages.push(ErrorDetails {
+                        message: err,
+                        location: declaration.location,
+                        severity: MessageSeverity::ERROR,
+                    });
+                }
             }
         }
 
         let proc_start = self.assembly_code.len();
-        self.procedure_offsets
-            .insert(procedure.name.clone(), proc_start);
+        self.procedures.insert(
+            procedure.name.clone(),
+            ProcedureInfo {
+                code_location: proc_start,
+                args: args_vec,
+            },
+        );
 
         for command in &procedure.commands {
             self.genearate_command(command);
@@ -2358,7 +2421,7 @@ impl CodeGenerator {
         if recursive_calls.len() > 0 {
             self.messages.push(ErrorDetails {
                 message: format!(
-                    "Recrusive calls are not allowed {} {:?}",
+                    "Recrusive calls are not allowed {} -> {:?}",
                     recursive_calls[0].procedure_name, recursive_calls[0].recursive_path
                 ),
                 location: recursive_calls[0]

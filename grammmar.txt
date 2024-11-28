@@ -1,6 +1,5 @@
 TODO 
 mul div mod
-proc_call valid check, with recursion
 tests for proc_call
 cleanup unwraps and panics
 more tests 
