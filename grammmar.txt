@@ -1,9 +1,10 @@
 TODO 
-proc_call valid check
+mul div mod
+proc_call valid check, with recursion
 tests for proc_call
-add scope to variables
-validate for iterator access
+cleanup unwraps and panics
 more tests 
+
 OPTIMIZATION
 
 program_all  -> procedures main  ✅ ✅

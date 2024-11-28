@@ -1,8 +1,11 @@
 use clap::Parser;
+use serde::Serialize;
+use serde_json::de;
 use std::cmp::Ordering;
 use std::fs::File;
 use std::io::{self, Write};
 use std::ops::Not;
+use std::result;
 use std::{collections::HashMap, fmt, fs, vec};
 use tree_sitter_gbl::LANGUAGE;
 
@@ -773,34 +776,36 @@ impl<'a> SourceContext<'a> {
                 lines[start_line]
             )?;
 
-            if start_line == error.location.0.row {
-                write!(stderr, "\x1b[1;34m     |\x1b[0m ")?;
+            write!(stderr, "\x1b[1;34m     |\x1b[0m ")?;
 
-                for _ in 0..error.location.0.column {
-                    write!(stderr, " ")?;
-                }
-
-                write!(stderr, "{}", error.severity.color_code())?;
-                write!(stderr, "^")?;
-
-                if error.location.1.column > error.location.0.column {
-                    for _ in error.location.0.column + 1..error.location.1.column {
-                        write!(stderr, "^")?;
-                    }
-                }
-
-                writeln!(
-                    stderr,
-                    " {}\x1b[0m",
-                    match error.severity {
-                        MessageSeverity::DEBUG => "debug point",
-                        MessageSeverity::INFO => "info point",
-                        MessageSeverity::WARNING => "warning",
-                        MessageSeverity::ERROR => "error",
-                        MessageSeverity::FATAL => "fatal error",
-                    }
-                )?;
+            for _ in 0..error.location.0.column {
+                write!(stderr, " ")?;
             }
+
+            write!(stderr, "{}", error.severity.color_code())?;
+
+            let end_row = error.location.1.row;
+            for _ in start_line..=end_row {
+                write!(stderr, "^")?;
+            }
+
+            if error.location.1.column > error.location.0.column {
+                for _ in error.location.0.column + 1..error.location.1.column {
+                    write!(stderr, "^")?;
+                }
+            }
+
+            writeln!(
+                stderr,
+                " {}\x1b[0m",
+                match error.severity {
+                    MessageSeverity::DEBUG => "debug point",
+                    MessageSeverity::INFO => "info point",
+                    MessageSeverity::WARNING => "warning",
+                    MessageSeverity::ERROR => "error",
+                    MessageSeverity::FATAL => "fatal error",
+                }
+            )?;
 
             writeln!(stderr)?;
         }
@@ -851,14 +856,14 @@ fn main() -> std::io::Result<()> {
         > 0;
 
     let mut context = SourceContext::new(code.as_str(), &input_file);
-    context.add_messages(codeb.messages);
+    context.add_messages(codeb.messages.clone());
     context.display()?;
 
     if is_error {
         std::process::exit(1);
     }
 
-    let asm: Vec<AsmInstruction> = codeb.assembly_code;
+    let asm: Vec<AsmInstruction> = codeb.assembly_code.clone();
 
     let mut output = String::new();
 
@@ -868,6 +873,7 @@ fn main() -> std::io::Result<()> {
     println!("{}", output);
     let mut file = File::create(args.out)?;
     file.write_all(output.as_bytes())?;
+    codeb.save_dbg_info("da");
     Ok(())
 }
 
@@ -875,6 +881,7 @@ fn optimize_ast(ast: Ast) -> Ast {
     ast
 }
 
+#[derive(Clone)]
 /// Represents the set of assembly-like instructions for a virtual machine.
 ///
 /// ## Memory and Program Counter
@@ -988,29 +995,125 @@ pub enum AsmInstruction {
 impl fmt::Display for AsmInstruction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AsmInstruction::GET(val) => write!(f, "GET {}", val),
-            AsmInstruction::PUT(val) => write!(f, "PUT {}", val),
-            AsmInstruction::LOAD(val) => write!(f, "LOAD {}", val),
-            AsmInstruction::STORE(val) => write!(f, "STORE {}", val),
-            AsmInstruction::LOADI(val) => write!(f, "LOADI {}", val),
-            AsmInstruction::STOREI(val) => write!(f, "STOREI {}", val),
-            AsmInstruction::ADD(val) => write!(f, "ADD {}", val),
-            AsmInstruction::SUB(val) => write!(f, "SUB {}", val),
-            AsmInstruction::ADDI(val) => write!(f, "ADDI {}", val),
-            AsmInstruction::SUBI(val) => write!(f, "SUBI {}", val),
-            AsmInstruction::SET(val) => write!(f, "SET {}", val),
+            AsmInstruction::GET(val) => {
+                if val.clone() > 0x2000000000000000 {
+                    write!(f, "GET {} # \t0x{:x}", val, val)
+                } else {
+                    write!(f, "GET {}", val)
+                }
+            }
+            AsmInstruction::PUT(val) => {
+                if val.clone() > 0x2000000000000000 {
+                    write!(f, "PUT {} # \t0x{:x}", val, val)
+                } else {
+                    write!(f, "PUT {}", val)
+                }
+            }
+            AsmInstruction::LOAD(val) => {
+                if val.clone() > 0x2000000000000000 {
+                    write!(f, "LOAD {} # \t0x{:x}", val, val)
+                } else {
+                    write!(f, "LOAD {}", val)
+                }
+            }
+            AsmInstruction::STORE(val) => {
+                if val.clone() > 0x2000000000000000 {
+                    write!(f, "STORE {} # \t0x{:x}", val, val)
+                } else {
+                    write!(f, "STORE {}", val)
+                }
+            }
+            AsmInstruction::LOADI(val) => {
+                if val.clone() > 0x2000000000000000 {
+                    write!(f, "LOADI {} # \t0x{:x}", val, val)
+                } else {
+                    write!(f, "LOADI {}", val)
+                }
+            }
+            AsmInstruction::STOREI(val) => {
+                if val.clone() > 0x2000000000000000 {
+                    write!(f, "STOREI {} # \t0x{:x}", val, val)
+                } else {
+                    write!(f, "STOREI {}", val)
+                }
+            }
+            AsmInstruction::ADD(val) => {
+                if val.clone() > 0x2000000000000000 {
+                    write!(f, "ADD {} # \t0x{:x}", val, val)
+                } else {
+                    write!(f, "ADD {}", val)
+                }
+            }
+            AsmInstruction::SUB(val) => {
+                if val.clone() > 0x2000000000000000 {
+                    write!(f, "SUB {} # \t0x{:x}", val, val)
+                } else {
+                    write!(f, "SUB {}", val)
+                }
+            }
+            AsmInstruction::ADDI(val) => {
+                if val.clone() > 0x2000000000000000 {
+                    write!(f, "ADDI {} # \t0x{:x}", val, val)
+                } else {
+                    write!(f, "ADDI {}", val)
+                }
+            }
+            AsmInstruction::SUBI(val) => {
+                if val.clone() > 0x2000000000000000 {
+                    write!(f, "SUBI {} # \t0x{:x}", val, val)
+                } else {
+                    write!(f, "SUBI {}", val)
+                }
+            }
+            AsmInstruction::SET(val) => {
+                if val.clone() > 0x2000000000000000 {
+                    write!(f, "SET {} # \t0x{:x}", val, val)
+                } else {
+                    write!(f, "SET {}", val)
+                }
+            }
             AsmInstruction::HALF => write!(f, "HALF"),
-            AsmInstruction::JUMP(val) => write!(f, "JUMP {}", val),
-            AsmInstruction::JPOS(val) => write!(f, "JPOS {}", val),
-            AsmInstruction::JZERO(val) => write!(f, "JZERO {}", val),
-            AsmInstruction::JNEG(val) => write!(f, "JNEG {}", val),
-            AsmInstruction::RTRN(val) => write!(f, "RTRN {}", val),
+            AsmInstruction::JUMP(val) => {
+                if val.clone() > 0x2000000000000000 {
+                    write!(f, "JUMP {} # \t0x{:x}", val, val)
+                } else {
+                    write!(f, "JUMP {}", val)
+                }
+            }
+            AsmInstruction::JPOS(val) => {
+                if val.clone() > 0x2000000000000000 {
+                    write!(f, "JPOS {} # \t0x{:x}", val, val)
+                } else {
+                    write!(f, "JPOS {}", val)
+                }
+            }
+            AsmInstruction::JZERO(val) => {
+                if val.clone() > 0x2000000000000000 {
+                    write!(f, "JZERO {} # \t0x{:x}", val, val)
+                } else {
+                    write!(f, "JZERO {}", val)
+                }
+            }
+            AsmInstruction::JNEG(val) => {
+                if val.clone() > 0x2000000000000000 {
+                    write!(f, "JNEG {} # \t0x{:x}", val, val)
+                } else {
+                    write!(f, "JNEG {}", val)
+                }
+            }
+            AsmInstruction::RTRN(val) => {
+                if val.clone() > 0x2000000000000000 {
+                    write!(f, "RTRN {} # \t0x{:x}", val, val)
+                } else {
+                    write!(f, "RTRN {}", val)
+                }
+            }
             AsmInstruction::HALT => write!(f, "HALT"),
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 struct SymbolLocation {
     memory: usize,
     is_array: bool,
@@ -1026,6 +1129,7 @@ struct CodeGenerator {
     pub last_mem_slot: usize,
     assembly_code: Vec<AsmInstruction>,
     messages: Vec<ErrorDetails>,
+    current_scope: String,
 }
 
 impl CodeGenerator {
@@ -1037,6 +1141,7 @@ impl CodeGenerator {
             last_mem_slot: 0x4000000000000000,
             assembly_code: Vec::new(),
             messages: Vec::new(),
+            current_scope: "".to_owned(),
         }
     }
 
@@ -1045,7 +1150,8 @@ impl CodeGenerator {
     }
 
     fn get_variable_w_idx(&self, name: &str, idx: i64) -> SymbolLocation {
-        let mut loc = self.symbols.get(name).unwrap().clone();
+        let scoped_name = self.current_scope.clone() + name;
+        let mut loc = self.symbols.get(&scoped_name).unwrap().clone();
         if idx != 0 {
             if idx < 0 {
                 loc.memory -= usize::try_from(-idx).unwrap();
@@ -1058,9 +1164,22 @@ impl CodeGenerator {
             return loc;
         }
     }
-    fn get_variable(&self, name: &str) -> SymbolLocation {
-        let loc = self.symbols.get(name).unwrap().clone();
-        return loc;
+
+    fn get_variable_current_scope(&self, name: &str) -> Result<SymbolLocation, String> {
+        let scoped_name = self.current_scope.clone() + name;
+        if let Some(loc) = self.symbols.get(&scoped_name) {
+            return Ok(loc.clone());
+        } else {
+            return Err(format!("Variable {} not declared in this scope.", name));
+        }
+    }
+
+    fn get_variable_global_scope(&self, name: &str) -> Result<SymbolLocation, String> {
+        if let Some(loc) = self.symbols.get(name) {
+            return Ok(loc.clone());
+        } else {
+            return Err(format!("Variable {} not declared in this scope.", name));
+        }
     }
 
     fn allocate_procedure(&mut self, proc_name: String) -> usize {
@@ -1079,8 +1198,10 @@ impl CodeGenerator {
     }
 
     fn allocate_arg(&mut self, name: String, is_array: bool) {
+        let scoped_name = self.current_scope.clone() + &name;
+
         self.symbols.insert(
-            name,
+            scoped_name,
             SymbolLocation {
                 memory: self.next_memory_slot,
                 is_array,
@@ -1092,14 +1213,18 @@ impl CodeGenerator {
         self.next_memory_slot += 1;
     }
 
-    fn allocate_variable(
+    fn allocate_variable_global(
         &mut self,
         name: String,
         left: i64,
         right: i64,
         is_pointer: bool,
         read_only: bool,
-    ) -> usize {
+    ) -> Result<usize, String> {
+        if self.symbols.contains_key(&name) {
+            return Err(format!("Variable {} already defined", name.clone()));
+        }
+
         let mem_slot = self.next_memory_slot;
         if left == 0 && right == 0 {
             self.symbols.insert(
@@ -1113,11 +1238,14 @@ impl CodeGenerator {
                 },
             );
             self.next_memory_slot += 1;
-            return mem_slot;
+            return Ok(mem_slot);
         }
 
         if left > right {
-            panic!("cant allocate array with dimensions {}:{}", left, right);
+            return Err(format!(
+                "Cant allocate array with dimensions {}:{}",
+                left, right
+            ));
         }
 
         if left >= 0 && right >= 0 {
@@ -1132,7 +1260,7 @@ impl CodeGenerator {
                 },
             );
             self.next_memory_slot += usize::try_from(right).unwrap() + 1;
-            return mem_slot;
+            return Ok(mem_slot);
         }
 
         if left < 0 && right >= 0 {
@@ -1148,7 +1276,7 @@ impl CodeGenerator {
                 },
             );
             self.next_memory_slot += usize::try_from(right).unwrap() + 1;
-            return mem_slot;
+            return Ok(mem_slot);
         }
 
         if left < 0 && right < 0 {
@@ -1165,10 +1293,32 @@ impl CodeGenerator {
             );
             self.next_memory_slot -= usize::try_from(-right).unwrap();
             self.next_memory_slot += 1;
-            return mem_slot;
+            return Ok(mem_slot);
         }
 
-        panic!("cant allocate array with dimensions {}:{}", left, right);
+        return Err(format!(
+            "Cant allocate array with dimensions {}:{}",
+            left, right
+        ));
+    }
+
+    fn delete_variable_scoped(&mut self, name: String) {
+        let scoped_name = self.current_scope.clone() + &name;
+        if let Some(value) = self.symbols.remove(&scoped_name) {
+        } else {
+        }
+    }
+
+    fn allocate_variable_scoped(
+        &mut self,
+        name: String,
+        left: i64,
+        right: i64,
+        is_pointer: bool,
+        read_only: bool,
+    ) -> Result<usize, String> {
+        let scoped_name = self.current_scope.clone() + &name;
+        return self.allocate_variable_global(scoped_name, left, right, is_pointer, read_only);
     }
 
     /// Loads value to p_0
@@ -1181,7 +1331,18 @@ impl CodeGenerator {
                 if let Some(idx) = &ident.index {
                     match idx {
                         Either::Left(idx_name) => {
-                            let base_loc = self.get_variable(&ident.name);
+                            let base_loc;
+                            if let Ok(_base_loc) = self.get_variable_current_scope(&ident.name) {
+                                base_loc = _base_loc;
+                            } else {
+                                self.messages.push(ErrorDetails {
+                                    message: "unknown variable".to_owned(),
+                                    location: ident.location,
+                                    severity: MessageSeverity::ERROR,
+                                });
+                                return;
+                            }
+
                             if !base_loc.is_array {
                                 self.messages.push(ErrorDetails {
                                     message: "cannot acces it like that".to_owned(),
@@ -1189,7 +1350,18 @@ impl CodeGenerator {
                                     severity: MessageSeverity::WARNING,
                                 });
                             }
-                            let idx_loc = self.get_variable(idx_name);
+                            let idx_loc;
+                            if let Ok(_idx_loc) = self.get_variable_current_scope(idx_name) {
+                                idx_loc = _idx_loc;
+                            } else {
+                                self.messages.push(ErrorDetails {
+                                    message: "unknown variable".to_owned(),
+                                    location: ident.location,
+                                    severity: MessageSeverity::ERROR,
+                                });
+                                return;
+                            }
+
                             if idx_loc.is_array {
                                 self.messages.push(ErrorDetails {
                                     message: "cannot acces it like that".to_owned(),
@@ -1221,7 +1393,7 @@ impl CodeGenerator {
                             }
                         }
                         Either::Right(idx_num) => {
-                            let symbol_loc = self.get_variable(&ident.name);
+                            let symbol_loc = self.get_variable_current_scope(&ident.name).unwrap();
                             if !symbol_loc.is_array {
                                 self.messages.push(ErrorDetails {
                                     message: "cannot acces it like that".to_owned(),
@@ -1241,18 +1413,26 @@ impl CodeGenerator {
                         }
                     }
                 } else {
-                    let loc = self.get_variable(&ident.name);
-                    if loc.is_array {
+                    let result = self.get_variable_current_scope(&ident.name);
+                    if let Ok(loc) = result {
+                        if loc.is_array {
+                            self.messages.push(ErrorDetails {
+                                message: "cannot acces it like that".to_owned(),
+                                location: ident.location,
+                                severity: MessageSeverity::WARNING,
+                            });
+                        }
+                        if loc.is_pointer {
+                            self.push_asm(AsmInstruction::LOADI(loc.memory));
+                        } else {
+                            self.push_asm(AsmInstruction::LOAD(loc.memory));
+                        }
+                    } else if let Err(e) = result {
                         self.messages.push(ErrorDetails {
-                            message: "cannot acces it like that".to_owned(),
+                            message: e,
                             location: ident.location,
-                            severity: MessageSeverity::WARNING,
+                            severity: MessageSeverity::ERROR,
                         });
-                    }
-                    if loc.is_pointer {
-                        self.push_asm(AsmInstruction::LOADI(loc.memory));
-                    } else {
-                        self.push_asm(AsmInstruction::LOAD(loc.memory));
                     }
                 }
             }
@@ -1260,21 +1440,55 @@ impl CodeGenerator {
     }
 
     fn store_to_identifier(&mut self, ident: &Identifier) {
+        let dst_loc;
+        match self.get_variable_current_scope(&ident.name) {
+            Ok(_r) => dst_loc = _r,
+            Err(err) => {
+                self.messages.push(ErrorDetails {
+                    message: err,
+                    location: ident.location,
+                    severity: MessageSeverity::ERROR,
+                });
+                return;
+            }
+        }
+
+        if dst_loc.read_only {
+            self.messages.push(ErrorDetails {
+                message: format!("Variable {} is read only.", ident.name),
+                location: ident.location,
+                severity: MessageSeverity::ERROR,
+            });
+            return;
+        }
+
         if let Some(dest_idx) = &ident.index {
             match dest_idx {
                 Either::Left(idx_name) => {
                     self.assembly_code
                         .push(AsmInstruction::STORE(self.last_mem_slot - 1));
 
-                    let base_loc = self.get_variable(&ident.name);
-                    if !base_loc.is_array {
+                    if !dst_loc.is_array {
                         self.messages.push(ErrorDetails {
                             message: "cannot acces it like that".to_owned(),
                             location: ident.location,
                             severity: MessageSeverity::WARNING,
                         });
                     }
-                    let idx_loc = self.get_variable(idx_name);
+                    let result = self.get_variable_current_scope(idx_name);
+                    let idx_loc;
+                    match result {
+                        Ok(_r) => idx_loc = _r,
+                        Err(err) => {
+                            self.messages.push(ErrorDetails {
+                                message: err,
+                                location: ident.location,
+                                severity: MessageSeverity::ERROR,
+                            });
+                            return;
+                        }
+                    }
+
                     if idx_loc.is_array {
                         self.messages.push(ErrorDetails {
                             message: "cannot acces it like that".to_owned(),
@@ -1282,9 +1496,9 @@ impl CodeGenerator {
                             severity: MessageSeverity::WARNING,
                         });
                     }
-                    match (base_loc.is_pointer, idx_loc.is_pointer) {
+                    match (dst_loc.is_pointer, idx_loc.is_pointer) {
                         (false, false) => {
-                            self.push_asm(AsmInstruction::SET(base_loc.memory as i64));
+                            self.push_asm(AsmInstruction::SET(dst_loc.memory as i64));
                             self.push_asm(AsmInstruction::ADD(idx_loc.memory));
                             self.push_asm(AsmInstruction::STORE(self.last_mem_slot));
 
@@ -1292,7 +1506,7 @@ impl CodeGenerator {
                             self.push_asm(AsmInstruction::STOREI(self.last_mem_slot));
                         }
                         (true, false) => {
-                            self.push_asm(AsmInstruction::LOAD(base_loc.memory));
+                            self.push_asm(AsmInstruction::LOAD(dst_loc.memory));
                             self.push_asm(AsmInstruction::ADD(idx_loc.memory));
                             self.push_asm(AsmInstruction::STORE(self.last_mem_slot));
 
@@ -1301,7 +1515,7 @@ impl CodeGenerator {
                         }
                         (false, true) => {
                             self.push_asm(AsmInstruction::LOAD(idx_loc.memory));
-                            self.push_asm(AsmInstruction::ADD(base_loc.memory));
+                            self.push_asm(AsmInstruction::ADD(dst_loc.memory));
                             self.push_asm(AsmInstruction::STORE(self.last_mem_slot));
 
                             self.push_asm(AsmInstruction::LOAD(self.last_mem_slot - 1));
@@ -1309,7 +1523,7 @@ impl CodeGenerator {
                         }
                         (true, true) => {
                             self.push_asm(AsmInstruction::LOADI(idx_loc.memory));
-                            self.push_asm(AsmInstruction::ADD(base_loc.memory));
+                            self.push_asm(AsmInstruction::ADD(dst_loc.memory));
                             self.push_asm(AsmInstruction::STORE(self.last_mem_slot));
 
                             self.push_asm(AsmInstruction::LOAD(self.last_mem_slot - 1));
@@ -1318,7 +1532,7 @@ impl CodeGenerator {
                     }
                 }
                 Either::Right(idx_num) => {
-                    let dest_loc = self.get_variable(&ident.name);
+                    let dest_loc = self.get_variable_current_scope(&ident.name).unwrap();
                     if !dest_loc.is_array {
                         self.messages.push(ErrorDetails {
                             message: "cannot acces it like that".to_owned(),
@@ -1340,7 +1554,20 @@ impl CodeGenerator {
                 }
             }
         } else {
-            let dest_loc = self.get_variable(&ident.name);
+            let result = self.get_variable_current_scope(&ident.name);
+            let dest_loc;
+            if let Ok(_d) = result {
+                dest_loc = _d;
+            } else if let Err(err) = result {
+                self.messages.push(ErrorDetails {
+                    message: err,
+                    location: ident.location,
+                    severity: MessageSeverity::ERROR,
+                });
+                return;
+            } else {
+                unreachable!();
+            }
             if dest_loc.is_array {
                 self.messages.push(ErrorDetails {
                     message: "cannot acces it like that".to_owned(),
@@ -1531,7 +1758,7 @@ impl CodeGenerator {
                 }
             }
         } else {
-            panic!();
+            unreachable!();
         }
     }
 
@@ -1729,12 +1956,12 @@ impl CodeGenerator {
                 arguments,
                 location,
             } => {
-                let jump_target = self.procedure_offsets.get(proc_name).unwrap().clone() as i64;
                 //TODO validate call
-                let return_loc = self.get_variable(&proc_name);
+                let jump_target = self.procedure_offsets.get(proc_name).unwrap().clone() as i64;
+                let return_loc = self.get_variable_global_scope(&proc_name).unwrap();
 
                 for (i, arg) in arguments.iter().enumerate() {
-                    let a = self.get_variable(&arg.name);
+                    let a = self.get_variable_current_scope(&arg.name).unwrap();
                     if a.is_pointer {
                         self.push_asm(AsmInstruction::LOAD(a.memory));
                         self.push_asm(AsmInstruction::STORE(return_loc.memory + i + 1));
@@ -1762,7 +1989,16 @@ impl CodeGenerator {
                 commands,
                 location,
             } => {
-                let for_iter_loc = self.allocate_variable(variable.to_string(), 0, 0, false, true);
+                let for_iter_loc = self
+                    .allocate_variable_scoped(variable.to_string(), 0, 0, false, true)
+                    .unwrap_or_else(|e| {
+                        self.messages.push(ErrorDetails {
+                            message: e,
+                            location: *location,
+                            severity: MessageSeverity::ERROR,
+                        });
+                        return 1;
+                    });
 
                 let for_num_iters = self.last_mem_slot;
                 self.last_mem_slot -= 1;
@@ -1835,7 +2071,7 @@ impl CodeGenerator {
                         }
                     }
                 }
-
+                self.delete_variable_scoped(variable.to_string());
                 self.last_mem_slot += 1;
             }
         }
@@ -1843,16 +2079,22 @@ impl CodeGenerator {
 
     fn generate_procedure(&mut self, procedure: &Procedure) {
         let return_address_location = self.allocate_procedure(procedure.name.clone());
-
+        self.current_scope = format!("${}$", procedure.name.clone());
         for arg in &procedure.args {
             self.allocate_arg(arg.name.clone(), arg.is_array);
         }
 
         for declaration in &procedure.declarations {
             if let Some((start, end)) = declaration.array_size {
-                self.allocate_variable(declaration.name.clone(), start, end, false, false);
+                let _ = self.allocate_variable_scoped(
+                    declaration.name.clone(),
+                    start,
+                    end,
+                    false,
+                    false,
+                );
             } else {
-                self.allocate_variable(declaration.name.clone(), 0, 0, false, false);
+                let _ = self.allocate_variable_scoped(declaration.name.clone(), 0, 0, false, false);
             }
         }
 
@@ -1866,6 +2108,7 @@ impl CodeGenerator {
 
         self.assembly_code
             .push(AsmInstruction::RTRN(return_address_location));
+        self.current_scope = format!("");
     }
 
     fn generate_asm(&mut self, ast: Ast) {
@@ -1889,10 +2132,25 @@ impl CodeGenerator {
         }
 
         for declaration in &ast.main_block.declarations {
+            let r;
             if let Some((start, end)) = declaration.array_size {
-                self.allocate_variable(declaration.name.clone(), start, end, false, false);
+                r = self.allocate_variable_scoped(
+                    declaration.name.clone(),
+                    start,
+                    end,
+                    false,
+                    false,
+                );
             } else {
-                self.allocate_variable(declaration.name.clone(), 0, 0, false, false);
+                r = self.allocate_variable_scoped(declaration.name.clone(), 0, 0, false, false);
+            }
+
+            if let Err(err) = r {
+                self.messages.push(ErrorDetails {
+                    message: err,
+                    location: declaration.location,
+                    severity: MessageSeverity::ERROR,
+                });
             }
         }
 
@@ -1900,7 +2158,14 @@ impl CodeGenerator {
             self.genearate_command(command);
         }
 
+        self.save_dbg_info("awd.json");
         self.push_asm(AsmInstruction::HALT);
-        println!("{:#?}", self.symbols);
+    }
+
+    fn save_dbg_info(&self, filename: &str) -> std::io::Result<()> {
+        let json = serde_json::to_string_pretty(&self.symbols)?;
+        let mut file = File::create(filename)?;
+        file.write_all(json.as_bytes())?;
+        Ok(())
     }
 }

@@ -1,10 +1,19 @@
 #pragma test in(12) out(12, 12)
 #pragma test in(1) out(1, 1)
 
+PROCEDURE bb(c) IS 
+a
+BEGIN
+    a:=3;
+    WRITE a;
+    WRITE c;
+END
+
+
 PROGRAM IS 
     a
 BEGIN
     READ a;
-    WRITE a;
+    bb(a);
     WRITE a;
 END
