@@ -2,6 +2,7 @@ use clap::Parser;
 use serde::Serialize;
 use serde_json::de;
 use std::cmp::Ordering;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, Write};
 use std::ops::Not;
@@ -149,7 +150,186 @@ pub struct Declaration {
     pub array_size: Option<(i64, i64)>,
     pub location: (tree_sitter::Point, tree_sitter::Point),
 }
+#[derive(Debug, Clone)]
+pub struct RecursiveCallInfo {
+    pub procedure_name: String,
+    pub recursive_path: Vec<String>,
+    pub location: Option<(tree_sitter::Point, tree_sitter::Point)>,
+}
 
+impl Ast {
+    pub fn detect_recursive_calls(&self) -> Vec<RecursiveCallInfo> {
+        let mut recursive_calls = Vec::new();
+
+        let call_graph = self.build_call_graph();
+        let call_locations = self.build_call_locations();
+
+        for procedure in &self.procedures {
+            let mut visited_procedures = HashSet::new();
+            if self.is_recursive(&call_graph, &procedure.name, &mut visited_procedures) {
+                let recursive_path: Vec<String> = visited_procedures.into_iter().collect();
+
+                let first_recursive_call_location = self.find_first_recursive_call_location(
+                    &procedure.name,
+                    &call_graph,
+                    &call_locations,
+                );
+
+                recursive_calls.push(RecursiveCallInfo {
+                    procedure_name: procedure.name.clone(),
+                    recursive_path,
+                    location: first_recursive_call_location,
+                });
+            }
+        }
+
+        return recursive_calls;
+    }
+
+    fn build_call_graph(&self) -> HashMap<String, HashSet<String>> {
+        let mut graph = HashMap::new();
+
+        for procedure in &self.procedures {
+            graph
+                .entry(procedure.name.clone())
+                .or_insert_with(HashSet::new);
+
+            let calls = self.find_procedure_calls(&procedure.commands);
+            graph.get_mut(&procedure.name).unwrap().extend(calls);
+        }
+
+        return graph;
+    }
+
+    fn build_call_locations(
+        &self,
+    ) -> HashMap<(String, String), (tree_sitter::Point, tree_sitter::Point)> {
+        let mut locations = HashMap::new();
+
+        for procedure in &self.procedures {
+            self.record_call_locations(&procedure.name, &procedure.commands, &mut locations);
+        }
+
+        return locations;
+    }
+
+    fn record_call_locations(
+        &self,
+        current_proc: &str,
+        commands: &[Command],
+        locations: &mut HashMap<(String, String), (tree_sitter::Point, tree_sitter::Point)>,
+    ) {
+        for command in commands {
+            match command {
+                Command::ProcedureCall {
+                    proc_name,
+                    location,
+                    ..
+                } => {
+                    locations.insert((current_proc.to_string(), proc_name.clone()), *location);
+                }
+                Command::IfElse {
+                    then_commands,
+                    else_commands,
+                    ..
+                } => {
+                    self.record_call_locations(current_proc, then_commands, locations);
+                    self.record_call_locations(current_proc, else_commands, locations);
+                }
+                Command::If { then_commands, .. } => {
+                    self.record_call_locations(current_proc, then_commands, locations);
+                }
+                Command::While { commands, .. } => {
+                    self.record_call_locations(current_proc, commands, locations);
+                }
+                Command::Repeat { commands, .. } => {
+                    self.record_call_locations(current_proc, commands, locations);
+                }
+                Command::For { commands, .. } => {
+                    self.record_call_locations(current_proc, commands, locations);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn find_first_recursive_call_location(
+        &self,
+        procedure_name: &str,
+        call_graph: &HashMap<String, HashSet<String>>,
+        call_locations: &HashMap<(String, String), (tree_sitter::Point, tree_sitter::Point)>,
+    ) -> Option<(tree_sitter::Point, tree_sitter::Point)> {
+        for (calling_proc, called_procs) in call_graph {
+            if called_procs.contains(procedure_name) {
+                if let Some(location) =
+                    call_locations.get(&(calling_proc.to_string(), procedure_name.to_string()))
+                {
+                    return Some(*location);
+                }
+            }
+        }
+        return None;
+    }
+
+    fn find_procedure_calls(&self, commands: &[Command]) -> HashSet<String> {
+        let mut calls = HashSet::new();
+
+        for command in commands {
+            match command {
+                Command::ProcedureCall { proc_name, .. } => {
+                    calls.insert(proc_name.clone());
+                }
+                Command::IfElse {
+                    then_commands,
+                    else_commands,
+                    ..
+                } => {
+                    calls.extend(self.find_procedure_calls(then_commands));
+                    calls.extend(self.find_procedure_calls(else_commands));
+                }
+                Command::If { then_commands, .. } => {
+                    calls.extend(self.find_procedure_calls(then_commands));
+                }
+                Command::While { commands, .. } => {
+                    calls.extend(self.find_procedure_calls(commands));
+                }
+                Command::Repeat { commands, .. } => {
+                    calls.extend(self.find_procedure_calls(commands));
+                }
+                Command::For { commands, .. } => {
+                    calls.extend(self.find_procedure_calls(commands));
+                }
+                _ => {}
+            }
+        }
+
+        return calls;
+    }
+
+    fn is_recursive(
+        &self,
+        call_graph: &HashMap<String, HashSet<String>>,
+        procedure_name: &str,
+        visited: &mut HashSet<String>,
+    ) -> bool {
+        if visited.contains(procedure_name) {
+            return true;
+        }
+
+        visited.insert(procedure_name.to_string());
+
+        if let Some(called_procedures) = call_graph.get(procedure_name) {
+            for called_proc in called_procedures {
+                if self.is_recursive(call_graph, called_proc, visited) {
+                    return true;
+                }
+            }
+        }
+
+        visited.remove(procedure_name);
+        return false;
+    }
+}
 // AST Builder
 pub struct AstBuilder<'a> {
     source_code: &'a str,
@@ -1120,6 +1300,7 @@ struct SymbolLocation {
     is_pointer: bool,
     is_procedure: bool,
     read_only: bool,
+    initialized: bool,
 }
 
 struct CodeGenerator {
@@ -1182,6 +1363,16 @@ impl CodeGenerator {
         }
     }
 
+    fn set_to_initialized_scoped(&mut self, name: &str) {
+        let scoped_name = self.current_scope.clone() + name;
+        self.set_to_initialized_global(&scoped_name);
+    }
+    fn set_to_initialized_global(&mut self, name: &str) {
+        if let Some(loc) = self.symbols.get_mut(name) {
+            loc.initialized = true;
+        }
+    }
+
     fn allocate_procedure(&mut self, proc_name: String) -> usize {
         self.symbols.insert(
             proc_name,
@@ -1191,6 +1382,7 @@ impl CodeGenerator {
                 is_pointer: false,
                 is_procedure: true,
                 read_only: true,
+                initialized: true,
             },
         );
         self.next_memory_slot += 1;
@@ -1208,6 +1400,7 @@ impl CodeGenerator {
                 is_pointer: true,
                 is_procedure: false,
                 read_only: false,
+                initialized: true,
             },
         );
         self.next_memory_slot += 1;
@@ -1235,6 +1428,7 @@ impl CodeGenerator {
                     is_pointer,
                     is_procedure: false,
                     read_only: read_only,
+                    initialized: false,
                 },
             );
             self.next_memory_slot += 1;
@@ -1257,6 +1451,7 @@ impl CodeGenerator {
                     is_pointer,
                     is_procedure: false,
                     read_only: read_only,
+                    initialized: false,
                 },
             );
             self.next_memory_slot += usize::try_from(right).unwrap() + 1;
@@ -1273,6 +1468,7 @@ impl CodeGenerator {
                     is_pointer,
                     is_procedure: false,
                     read_only: read_only,
+                    initialized: false,
                 },
             );
             self.next_memory_slot += usize::try_from(right).unwrap() + 1;
@@ -1289,6 +1485,7 @@ impl CodeGenerator {
                     is_pointer,
                     is_procedure: false,
                     read_only: read_only,
+                    initialized: false,
                 },
             );
             self.next_memory_slot -= usize::try_from(-right).unwrap();
@@ -1328,6 +1525,30 @@ impl CodeGenerator {
                 self.push_asm(AsmInstruction::SET(num.clone())); // ! CONSTANT
             }
             Value::Identifier(ident) => {
+                let result = self.get_variable_current_scope(&ident.name);
+                match result {
+                    Ok(loc) => {
+                        if !loc.initialized {
+                            self.messages.push(ErrorDetails {
+                                message: format!(
+                                    "Usage of not initialized variable {}.",
+                                    ident.name
+                                ),
+                                location: ident.location,
+                                severity: MessageSeverity::WARNING,
+                            });
+                        }
+                    }
+                    Err(err) => {
+                        self.messages.push(ErrorDetails {
+                            message: err,
+                            location: ident.location,
+                            severity: MessageSeverity::ERROR,
+                        });
+                        return;
+                    }
+                }
+
                 if let Some(idx) = &ident.index {
                     match idx {
                         Either::Left(idx_name) => {
@@ -1364,7 +1585,17 @@ impl CodeGenerator {
 
                             if idx_loc.is_array {
                                 self.messages.push(ErrorDetails {
-                                    message: "cannot acces it like that".to_owned(),
+                                    message: format!("Cannot acces {} like that.", ident.name),
+                                    location: ident.location,
+                                    severity: MessageSeverity::WARNING,
+                                });
+                            }
+                            if !idx_loc.initialized {
+                                self.messages.push(ErrorDetails {
+                                    message: format!(
+                                        "Usage of not initialized variable {}",
+                                        idx_name,
+                                    ),
                                     location: ident.location,
                                     severity: MessageSeverity::WARNING,
                                 });
@@ -1417,7 +1648,7 @@ impl CodeGenerator {
                     if let Ok(loc) = result {
                         if loc.is_array {
                             self.messages.push(ErrorDetails {
-                                message: "cannot acces it like that".to_owned(),
+                                message: "cannot acces it like thatdaw".to_owned(),
                                 location: ident.location,
                                 severity: MessageSeverity::WARNING,
                             });
@@ -1462,6 +1693,8 @@ impl CodeGenerator {
             return;
         }
 
+        self.set_to_initialized_scoped(&ident.name);
+
         if let Some(dest_idx) = &ident.index {
             match dest_idx {
                 Either::Left(idx_name) => {
@@ -1470,7 +1703,7 @@ impl CodeGenerator {
 
                     if !dst_loc.is_array {
                         self.messages.push(ErrorDetails {
-                            message: "cannot acces it like that".to_owned(),
+                            message: format!("Cannot acces {} it like that", ident.name),
                             location: ident.location,
                             severity: MessageSeverity::WARNING,
                         });
@@ -1491,7 +1724,15 @@ impl CodeGenerator {
 
                     if idx_loc.is_array {
                         self.messages.push(ErrorDetails {
-                            message: "cannot acces it like that".to_owned(),
+                            message: format!("Cannot acces {} it like that", idx_name),
+                            location: ident.location,
+                            severity: MessageSeverity::WARNING,
+                        });
+                    }
+
+                    if !idx_loc.initialized {
+                        self.messages.push(ErrorDetails {
+                            message: format!("Variable {} not initialized", idx_name),
                             location: ident.location,
                             severity: MessageSeverity::WARNING,
                         });
@@ -1969,6 +2210,7 @@ impl CodeGenerator {
                         self.push_asm(AsmInstruction::SET(a.memory as i64));
                         self.push_asm(AsmInstruction::STORE(return_loc.memory + i + 1));
                     }
+                    self.set_to_initialized_scoped(&arg.name);
                 }
 
                 let current_loc = self.assembly_code.len() as i64;
@@ -2112,6 +2354,21 @@ impl CodeGenerator {
     }
 
     fn generate_asm(&mut self, ast: Ast) {
+        let recursive_calls = ast.detect_recursive_calls();
+        if recursive_calls.len() > 0 {
+            self.messages.push(ErrorDetails {
+                message: format!(
+                    "Recrusive calls are not allowed {} {:?}",
+                    recursive_calls[0].procedure_name, recursive_calls[0].recursive_path
+                ),
+                location: recursive_calls[0]
+                    .location
+                    .unwrap_or((tree_sitter::Point::default(), tree_sitter::Point::default())),
+                severity: MessageSeverity::ERROR,
+            });
+            return;
+        }
+
         if ast.procedures.len() > 0 {
             self.push_asm(AsmInstruction::JUMP(0));
         }
