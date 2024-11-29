@@ -964,28 +964,11 @@ impl<'a> SourceContext<'a> {
 
             write!(stderr, "{}", error.severity.color_code())?;
 
-            let end_row = error.location.1.row;
-            for _ in start_line..=end_row {
-                write!(stderr, "^")?;
-            }
-
             if error.location.1.column > error.location.0.column {
                 for _ in error.location.0.column + 1..error.location.1.column {
                     write!(stderr, "^")?;
                 }
             }
-
-            writeln!(
-                stderr,
-                " {}\x1b[0m",
-                match error.severity {
-                    MessageSeverity::DEBUG => "debug point",
-                    MessageSeverity::INFO => "info point",
-                    MessageSeverity::WARNING => "warning",
-                    MessageSeverity::ERROR => "error",
-                    MessageSeverity::FATAL => "fatal error",
-                }
-            )?;
 
             writeln!(stderr)?;
         }
@@ -1043,7 +1026,7 @@ fn main() -> std::io::Result<()> {
         std::process::exit(1);
     }
 
-    let asm: Vec<AsmInstruction> = codeb.assembly_code.clone();
+    let asm: Vec<ASM> = codeb.assembly_code.clone();
 
     let mut output = String::new();
 
@@ -1068,7 +1051,7 @@ fn optimize_ast(ast: Ast) -> Ast {
 /// - Memory `p_i` is indexed by `i = 0, 1, 2, 3, ..., 2^62` and is not initialized.
 /// - `p_0` is the accumulator.
 /// - `k` is the program counter.
-pub enum AsmInstruction {
+pub enum ASM {
     /// Reads a number from the user and stores it in `p_i`.
     /// - **Effect**: `p_i = user_input`
     /// - **Cost**: 100
@@ -1172,123 +1155,123 @@ pub enum AsmInstruction {
     HALT,
 }
 
-impl fmt::Display for AsmInstruction {
+impl fmt::Display for ASM {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AsmInstruction::GET(val) => {
+            ASM::GET(val) => {
                 if val.clone() > 0x2000000000000000 {
                     write!(f, "GET {} # \t0x{:x}", val, val)
                 } else {
                     write!(f, "GET {}", val)
                 }
             }
-            AsmInstruction::PUT(val) => {
+            ASM::PUT(val) => {
                 if val.clone() > 0x2000000000000000 {
                     write!(f, "PUT {} # \t0x{:x}", val, val)
                 } else {
                     write!(f, "PUT {}", val)
                 }
             }
-            AsmInstruction::LOAD(val) => {
+            ASM::LOAD(val) => {
                 if val.clone() > 0x2000000000000000 {
                     write!(f, "LOAD {} # \t0x{:x}", val, val)
                 } else {
                     write!(f, "LOAD {}", val)
                 }
             }
-            AsmInstruction::STORE(val) => {
+            ASM::STORE(val) => {
                 if val.clone() > 0x2000000000000000 {
                     write!(f, "STORE {} # \t0x{:x}", val, val)
                 } else {
                     write!(f, "STORE {}", val)
                 }
             }
-            AsmInstruction::LOADI(val) => {
+            ASM::LOADI(val) => {
                 if val.clone() > 0x2000000000000000 {
                     write!(f, "LOADI {} # \t0x{:x}", val, val)
                 } else {
                     write!(f, "LOADI {}", val)
                 }
             }
-            AsmInstruction::STOREI(val) => {
+            ASM::STOREI(val) => {
                 if val.clone() > 0x2000000000000000 {
                     write!(f, "STOREI {} # \t0x{:x}", val, val)
                 } else {
                     write!(f, "STOREI {}", val)
                 }
             }
-            AsmInstruction::ADD(val) => {
+            ASM::ADD(val) => {
                 if val.clone() > 0x2000000000000000 {
                     write!(f, "ADD {} # \t0x{:x}", val, val)
                 } else {
                     write!(f, "ADD {}", val)
                 }
             }
-            AsmInstruction::SUB(val) => {
+            ASM::SUB(val) => {
                 if val.clone() > 0x2000000000000000 {
                     write!(f, "SUB {} # \t0x{:x}", val, val)
                 } else {
                     write!(f, "SUB {}", val)
                 }
             }
-            AsmInstruction::ADDI(val) => {
+            ASM::ADDI(val) => {
                 if val.clone() > 0x2000000000000000 {
                     write!(f, "ADDI {} # \t0x{:x}", val, val)
                 } else {
                     write!(f, "ADDI {}", val)
                 }
             }
-            AsmInstruction::SUBI(val) => {
+            ASM::SUBI(val) => {
                 if val.clone() > 0x2000000000000000 {
                     write!(f, "SUBI {} # \t0x{:x}", val, val)
                 } else {
                     write!(f, "SUBI {}", val)
                 }
             }
-            AsmInstruction::SET(val) => {
+            ASM::SET(val) => {
                 if val.clone() > 0x2000000000000000 {
                     write!(f, "SET {} # \t0x{:x}", val, val)
                 } else {
                     write!(f, "SET {}", val)
                 }
             }
-            AsmInstruction::HALF => write!(f, "HALF"),
-            AsmInstruction::JUMP(val) => {
+            ASM::HALF => write!(f, "HALF"),
+            ASM::JUMP(val) => {
                 if val.clone() > 0x2000000000000000 {
                     write!(f, "JUMP {} # \t0x{:x}", val, val)
                 } else {
                     write!(f, "JUMP {}", val)
                 }
             }
-            AsmInstruction::JPOS(val) => {
+            ASM::JPOS(val) => {
                 if val.clone() > 0x2000000000000000 {
                     write!(f, "JPOS {} # \t0x{:x}", val, val)
                 } else {
                     write!(f, "JPOS {}", val)
                 }
             }
-            AsmInstruction::JZERO(val) => {
+            ASM::JZERO(val) => {
                 if val.clone() > 0x2000000000000000 {
                     write!(f, "JZERO {} # \t0x{:x}", val, val)
                 } else {
                     write!(f, "JZERO {}", val)
                 }
             }
-            AsmInstruction::JNEG(val) => {
+            ASM::JNEG(val) => {
                 if val.clone() > 0x2000000000000000 {
                     write!(f, "JNEG {} # \t0x{:x}", val, val)
                 } else {
                     write!(f, "JNEG {}", val)
                 }
             }
-            AsmInstruction::RTRN(val) => {
+            ASM::RTRN(val) => {
                 if val.clone() > 0x2000000000000000 {
                     write!(f, "RTRN {} # \t0x{:x}", val, val)
                 } else {
                     write!(f, "RTRN {}", val)
                 }
             }
-            AsmInstruction::HALT => write!(f, "HALT"),
+            ASM::HALT => write!(f, "HALT"),
         }
     }
 }
@@ -1314,7 +1297,7 @@ struct CodeGenerator {
     procedures: HashMap<String, ProcedureInfo>,
     next_memory_slot: usize,
     last_mem_slot: usize,
-    assembly_code: Vec<AsmInstruction>,
+    assembly_code: Vec<ASM>,
     messages: Vec<ErrorDetails>,
     current_scope: String,
 }
@@ -1332,7 +1315,7 @@ impl CodeGenerator {
         }
     }
 
-    fn push_asm(&mut self, ins: AsmInstruction) {
+    fn push_asm(&mut self, ins: ASM) {
         self.assembly_code.push(ins);
     }
 
@@ -1528,7 +1511,7 @@ impl CodeGenerator {
     fn generate_value(&mut self, value: &Value) {
         match value {
             Value::Number(num) => {
-                self.push_asm(AsmInstruction::SET(num.clone())); // ! CONSTANT
+                self.push_asm(ASM::SET(num.clone())); // ! CONSTANT
             }
             Value::Identifier(ident) => {
                 let result = self.get_variable_current_scope(&ident.name);
@@ -1608,24 +1591,24 @@ impl CodeGenerator {
                             }
                             match (base_loc.is_pointer, idx_loc.is_pointer) {
                                 (false, false) => {
-                                    self.push_asm(AsmInstruction::SET(base_loc.memory as i64));
-                                    self.push_asm(AsmInstruction::ADD(idx_loc.memory));
-                                    self.push_asm(AsmInstruction::LOADI(0));
+                                    self.push_asm(ASM::SET(base_loc.memory as i64));
+                                    self.push_asm(ASM::ADD(idx_loc.memory));
+                                    self.push_asm(ASM::LOADI(0));
                                 }
                                 (true, false) => {
-                                    self.push_asm(AsmInstruction::LOAD(base_loc.memory));
-                                    self.push_asm(AsmInstruction::ADD(idx_loc.memory));
-                                    self.push_asm(AsmInstruction::LOADI(0));
+                                    self.push_asm(ASM::LOAD(base_loc.memory));
+                                    self.push_asm(ASM::ADD(idx_loc.memory));
+                                    self.push_asm(ASM::LOADI(0));
                                 }
                                 (false, true) => {
-                                    self.push_asm(AsmInstruction::LOAD(idx_loc.memory));
-                                    self.push_asm(AsmInstruction::ADD(base_loc.memory));
-                                    self.push_asm(AsmInstruction::LOADI(0));
+                                    self.push_asm(ASM::LOAD(idx_loc.memory));
+                                    self.push_asm(ASM::ADD(base_loc.memory));
+                                    self.push_asm(ASM::LOADI(0));
                                 }
                                 (true, true) => {
-                                    self.push_asm(AsmInstruction::LOADI(idx_loc.memory));
-                                    self.push_asm(AsmInstruction::ADD(base_loc.memory));
-                                    self.push_asm(AsmInstruction::LOADI(0));
+                                    self.push_asm(ASM::LOADI(idx_loc.memory));
+                                    self.push_asm(ASM::ADD(base_loc.memory));
+                                    self.push_asm(ASM::LOADI(0));
                                 }
                             }
                         }
@@ -1640,12 +1623,11 @@ impl CodeGenerator {
                             }
                             if !symbol_loc.is_pointer {
                                 let loc = self.get_variable_w_idx(&ident.name, *idx_num);
-                                self.push_asm(AsmInstruction::LOAD(loc.memory));
+                                self.push_asm(ASM::LOAD(loc.memory));
                             } else {
-                                self.push_asm(AsmInstruction::SET(*idx_num));
-                                self.assembly_code
-                                    .push(AsmInstruction::ADD(symbol_loc.memory));
-                                self.push_asm(AsmInstruction::LOADI(0));
+                                self.push_asm(ASM::SET(*idx_num));
+                                self.assembly_code.push(ASM::ADD(symbol_loc.memory));
+                                self.push_asm(ASM::LOADI(0));
                             }
                         }
                     }
@@ -1660,9 +1642,9 @@ impl CodeGenerator {
                             });
                         }
                         if loc.is_pointer {
-                            self.push_asm(AsmInstruction::LOADI(loc.memory));
+                            self.push_asm(ASM::LOADI(loc.memory));
                         } else {
-                            self.push_asm(AsmInstruction::LOAD(loc.memory));
+                            self.push_asm(ASM::LOAD(loc.memory));
                         }
                     } else if let Err(e) = result {
                         self.messages.push(ErrorDetails {
@@ -1704,8 +1686,7 @@ impl CodeGenerator {
         if let Some(dest_idx) = &ident.index {
             match dest_idx {
                 Either::Left(idx_name) => {
-                    self.assembly_code
-                        .push(AsmInstruction::STORE(self.last_mem_slot - 1));
+                    self.assembly_code.push(ASM::STORE(self.last_mem_slot - 1));
 
                     if !dst_loc.is_array {
                         self.messages.push(ErrorDetails {
@@ -1745,36 +1726,36 @@ impl CodeGenerator {
                     }
                     match (dst_loc.is_pointer, idx_loc.is_pointer) {
                         (false, false) => {
-                            self.push_asm(AsmInstruction::SET(dst_loc.memory as i64));
-                            self.push_asm(AsmInstruction::ADD(idx_loc.memory));
-                            self.push_asm(AsmInstruction::STORE(self.last_mem_slot));
+                            self.push_asm(ASM::SET(dst_loc.memory as i64));
+                            self.push_asm(ASM::ADD(idx_loc.memory));
+                            self.push_asm(ASM::STORE(self.last_mem_slot));
 
-                            self.push_asm(AsmInstruction::LOAD(self.last_mem_slot - 1));
-                            self.push_asm(AsmInstruction::STOREI(self.last_mem_slot));
+                            self.push_asm(ASM::LOAD(self.last_mem_slot - 1));
+                            self.push_asm(ASM::STOREI(self.last_mem_slot));
                         }
                         (true, false) => {
-                            self.push_asm(AsmInstruction::LOAD(dst_loc.memory));
-                            self.push_asm(AsmInstruction::ADD(idx_loc.memory));
-                            self.push_asm(AsmInstruction::STORE(self.last_mem_slot));
+                            self.push_asm(ASM::LOAD(dst_loc.memory));
+                            self.push_asm(ASM::ADD(idx_loc.memory));
+                            self.push_asm(ASM::STORE(self.last_mem_slot));
 
-                            self.push_asm(AsmInstruction::LOAD(self.last_mem_slot - 1));
-                            self.push_asm(AsmInstruction::STOREI(self.last_mem_slot));
+                            self.push_asm(ASM::LOAD(self.last_mem_slot - 1));
+                            self.push_asm(ASM::STOREI(self.last_mem_slot));
                         }
                         (false, true) => {
-                            self.push_asm(AsmInstruction::LOAD(idx_loc.memory));
-                            self.push_asm(AsmInstruction::ADD(dst_loc.memory));
-                            self.push_asm(AsmInstruction::STORE(self.last_mem_slot));
+                            self.push_asm(ASM::LOAD(idx_loc.memory));
+                            self.push_asm(ASM::ADD(dst_loc.memory));
+                            self.push_asm(ASM::STORE(self.last_mem_slot));
 
-                            self.push_asm(AsmInstruction::LOAD(self.last_mem_slot - 1));
-                            self.push_asm(AsmInstruction::STOREI(self.last_mem_slot));
+                            self.push_asm(ASM::LOAD(self.last_mem_slot - 1));
+                            self.push_asm(ASM::STOREI(self.last_mem_slot));
                         }
                         (true, true) => {
-                            self.push_asm(AsmInstruction::LOADI(idx_loc.memory));
-                            self.push_asm(AsmInstruction::ADD(dst_loc.memory));
-                            self.push_asm(AsmInstruction::STORE(self.last_mem_slot));
+                            self.push_asm(ASM::LOADI(idx_loc.memory));
+                            self.push_asm(ASM::ADD(dst_loc.memory));
+                            self.push_asm(ASM::STORE(self.last_mem_slot));
 
-                            self.push_asm(AsmInstruction::LOAD(self.last_mem_slot - 1));
-                            self.push_asm(AsmInstruction::STOREI(self.last_mem_slot));
+                            self.push_asm(ASM::LOAD(self.last_mem_slot - 1));
+                            self.push_asm(ASM::STOREI(self.last_mem_slot));
                         }
                     }
                 }
@@ -1789,14 +1770,14 @@ impl CodeGenerator {
                     }
                     if !dest_loc.is_pointer {
                         let final_loc = self.get_variable_w_idx(&ident.name, *idx_num);
-                        self.push_asm(AsmInstruction::STORE(final_loc.memory));
+                        self.push_asm(ASM::STORE(final_loc.memory));
                     } else {
-                        self.push_asm(AsmInstruction::STORE(self.last_mem_slot - 1));
-                        self.push_asm(AsmInstruction::SET(*idx_num));
-                        self.push_asm(AsmInstruction::ADD(dest_loc.memory));
-                        self.push_asm(AsmInstruction::STORE(self.last_mem_slot + 0));
-                        self.push_asm(AsmInstruction::LOAD(self.last_mem_slot - 1));
-                        self.push_asm(AsmInstruction::STOREI(self.last_mem_slot + 0));
+                        self.push_asm(ASM::STORE(self.last_mem_slot - 1));
+                        self.push_asm(ASM::SET(*idx_num));
+                        self.push_asm(ASM::ADD(dest_loc.memory));
+                        self.push_asm(ASM::STORE(self.last_mem_slot + 0));
+                        self.push_asm(ASM::LOAD(self.last_mem_slot - 1));
+                        self.push_asm(ASM::STOREI(self.last_mem_slot + 0));
                     }
                 }
             }
@@ -1824,73 +1805,59 @@ impl CodeGenerator {
             }
 
             if dest_loc.is_pointer {
-                self.assembly_code
-                    .push(AsmInstruction::STOREI(dest_loc.memory));
+                self.assembly_code.push(ASM::STOREI(dest_loc.memory));
             } else {
-                self.assembly_code
-                    .push(AsmInstruction::STORE(dest_loc.memory));
+                self.assembly_code.push(ASM::STORE(dest_loc.memory));
             }
         }
     }
 
-    fn generate_condition(&mut self, condition: &Condition) -> AsmInstruction {
+    fn generate_condition(&mut self, condition: &Condition) -> ASM {
         match condition {
             Condition::NotEqual(left, right) => {
                 self.generate_value(left);
-                self.assembly_code
-                    .push(AsmInstruction::STORE(self.last_mem_slot));
+                self.assembly_code.push(ASM::STORE(self.last_mem_slot));
                 self.generate_value(right);
-                self.assembly_code
-                    .push(AsmInstruction::SUB(self.last_mem_slot));
-                AsmInstruction::JZERO(0)
+                self.assembly_code.push(ASM::SUB(self.last_mem_slot));
+                ASM::JZERO(0)
             }
             Condition::Equal(left, right) => {
                 self.generate_value(left);
-                self.assembly_code
-                    .push(AsmInstruction::STORE(self.last_mem_slot));
+                self.assembly_code.push(ASM::STORE(self.last_mem_slot));
                 self.generate_value(right);
-                self.assembly_code
-                    .push(AsmInstruction::SUB(self.last_mem_slot));
-                self.push_asm(AsmInstruction::JZERO(2));
-                AsmInstruction::JUMP(0)
+                self.assembly_code.push(ASM::SUB(self.last_mem_slot));
+                self.push_asm(ASM::JZERO(2));
+                ASM::JUMP(0)
             }
             Condition::LessOrEqual(left, right) => {
                 self.generate_value(right);
-                self.assembly_code
-                    .push(AsmInstruction::STORE(self.last_mem_slot));
+                self.assembly_code.push(ASM::STORE(self.last_mem_slot));
                 self.generate_value(left);
-                self.assembly_code
-                    .push(AsmInstruction::SUB(self.last_mem_slot));
-                AsmInstruction::JPOS(0)
+                self.assembly_code.push(ASM::SUB(self.last_mem_slot));
+                ASM::JPOS(0)
             }
             Condition::GreaterOrEqual(left, right) => {
                 self.generate_value(left);
-                self.assembly_code
-                    .push(AsmInstruction::STORE(self.last_mem_slot));
+                self.assembly_code.push(ASM::STORE(self.last_mem_slot));
                 self.generate_value(right);
-                self.assembly_code
-                    .push(AsmInstruction::SUB(self.last_mem_slot));
-                AsmInstruction::JPOS(0)
+                self.assembly_code.push(ASM::SUB(self.last_mem_slot));
+                ASM::JPOS(0)
             }
             Condition::GreaterThan(left, right) => {
                 self.generate_value(right);
-                self.assembly_code
-                    .push(AsmInstruction::STORE(self.last_mem_slot));
+                self.assembly_code.push(ASM::STORE(self.last_mem_slot));
                 self.generate_value(left);
-                self.assembly_code
-                    .push(AsmInstruction::SUB(self.last_mem_slot));
-                self.push_asm(AsmInstruction::JPOS(2));
-                AsmInstruction::JUMP(0)
+                self.assembly_code.push(ASM::SUB(self.last_mem_slot));
+                self.push_asm(ASM::JPOS(2));
+                ASM::JUMP(0)
             }
             Condition::LessThan(left, right) => {
                 self.generate_value(left);
-                self.assembly_code
-                    .push(AsmInstruction::STORE(self.last_mem_slot));
+                self.assembly_code.push(ASM::STORE(self.last_mem_slot));
                 self.generate_value(right);
-                self.assembly_code
-                    .push(AsmInstruction::SUB(self.last_mem_slot));
-                self.push_asm(AsmInstruction::JPOS(2));
-                AsmInstruction::JUMP(0)
+                self.assembly_code.push(ASM::SUB(self.last_mem_slot));
+                self.push_asm(ASM::JPOS(2));
+                ASM::JUMP(0)
             }
         }
     }
@@ -1909,99 +1876,334 @@ impl CodeGenerator {
                 }
                 Expression::Addition(left, right) => {
                     self.generate_value(left);
-                    self.assembly_code
-                        .push(AsmInstruction::STORE(self.last_mem_slot));
+                    self.assembly_code.push(ASM::STORE(self.last_mem_slot));
                     self.generate_value(right);
-                    self.assembly_code
-                        .push(AsmInstruction::ADD(self.last_mem_slot));
+                    self.assembly_code.push(ASM::ADD(self.last_mem_slot));
                     self.store_to_identifier(identifier);
                 }
                 Expression::Subtraction(left, right) => {
                     self.generate_value(right);
-                    self.assembly_code
-                        .push(AsmInstruction::STORE(self.last_mem_slot));
+                    self.assembly_code.push(ASM::STORE(self.last_mem_slot));
                     self.generate_value(left);
-                    self.assembly_code
-                        .push(AsmInstruction::SUB(self.last_mem_slot));
+                    self.assembly_code.push(ASM::SUB(self.last_mem_slot));
                     self.store_to_identifier(identifier);
                 }
                 Expression::Division(left, right) => {
                     self.generate_value(left);
-                    self.assembly_code
-                        .push(AsmInstruction::STORE(self.last_mem_slot));
+                    self.assembly_code.push(ASM::STORE(self.last_mem_slot));
 
                     match right {
                         Value::Number(val) => {
-                            if val.clone() != 2 {
-                                self.messages.push(ErrorDetails {
-                                    message: "cannot divide by anything else than 2 (for now)"
-                                        .to_owned(),
-                                    location: *location,
-                                    severity: MessageSeverity::ERROR,
-                                });
+                            if val.clone() == 2 {
+                                self.push_asm(ASM::HALF);
+                                self.store_to_identifier(identifier);
+                                return;
                             }
                         }
-                        _ => self.messages.push(ErrorDetails {
-                            message: "cannot divide by anything else than 2 (for now)".to_owned(),
-                            location: *location,
-                            severity: MessageSeverity::ERROR,
-                        }),
+                        _ => {}
                     }
-                    self.push_asm(AsmInstruction::HALF);
+
+                    let sign = self.last_mem_slot;
+                    self.last_mem_slot -= 1;
+
+                    let quotient = self.last_mem_slot;
+                    self.last_mem_slot -= 1;
+
+                    let current_divisor = self.last_mem_slot;
+                    self.last_mem_slot -= 1;
+
+                    let current_multiple = self.last_mem_slot;
+                    self.last_mem_slot -= 1;
+                    let l = self.last_mem_slot;
+                    self.last_mem_slot -= 1;
+
+                    let r = self.last_mem_slot;
+                    self.last_mem_slot -= 1;
+
+                    self.push_asm(ASM::SET(0));
+                    self.push_asm(ASM::STORE(sign));
+
+                    self.generate_value(left);
+
+                    /*
+                    if left < 0:
+                    sign = -sign
+                    left = -left
+                    */
+                    self.push_asm(ASM::STORE(l));
+                    self.push_asm(ASM::JPOS(6));
+                    self.push_asm(ASM::SET(-1));
+                    self.push_asm(ASM::STORE(sign));
+                    self.push_asm(ASM::SET(0));
+                    self.push_asm(ASM::SUB(l));
+                    self.push_asm(ASM::STORE(l));
+
+                    /*
+                    if right < 0:
+                    sign = -sign
+                    right = -right
+                    */
+                    self.generate_value(right);
+                    self.push_asm(ASM::STORE(r));
+                    self.push_asm(ASM::JPOS(7));
+                    self.push_asm(ASM::SET(0));
+                    self.push_asm(ASM::LOAD(sign));
+                    self.push_asm(ASM::STORE(sign));
+                    self.push_asm(ASM::SET(0));
+                    self.push_asm(ASM::SUB(r));
+                    self.push_asm(ASM::STORE(r));
+
+                    self.push_asm(ASM::SET(0)); // quotient = 0
+                    self.push_asm(ASM::STORE(quotient));
+
+                    self.push_asm(ASM::LOAD(r));
+                    self.push_asm(ASM::STORE(current_divisor)); //current_divisor = right
+
+                    self.push_asm(ASM::SET(1));
+                    self.push_asm(ASM::STORE(current_multiple)); // current_multiple = 1
+
+                    /*
+                    while current_divisor <= left:
+                        current_divisor += current_divisor
+                        current_multiple += current_multiple
+                    */
+                    self.push_asm(ASM::LOAD(current_divisor));
+                    self.push_asm(ASM::SUB(l));
+                    self.push_asm(ASM::JPOS(8));
+
+                    self.push_asm(ASM::LOAD(current_divisor));
+                    self.push_asm(ASM::ADD(current_divisor));
+                    self.push_asm(ASM::STORE(current_divisor));
+
+                    self.push_asm(ASM::LOAD(current_multiple));
+                    self.push_asm(ASM::ADD(current_multiple));
+                    self.push_asm(ASM::STORE(current_multiple));
+
+                    self.push_asm(ASM::JUMP(-9));
+
+                    /*
+                    while right <= left:
+                        current_divisor //= 2
+                        current_multiple //= 2
+
+                        if current_divisor <= left:
+                            left -= current_divisor
+                            quotient += current_multiple
+                    */
+
+                    self.push_asm(ASM::LOAD(r));
+                    self.push_asm(ASM::SUB(l));
+                    self.push_asm(ASM::JPOS(16));
+
+                    self.push_asm(ASM::LOAD(current_multiple));
+                    self.push_asm(ASM::HALF);
+                    self.push_asm(ASM::STORE(current_multiple));
+
+                    self.push_asm(ASM::LOAD(current_divisor));
+                    self.push_asm(ASM::HALF);
+                    self.push_asm(ASM::STORE(current_divisor));
+
+                    self.push_asm(ASM::SUB(l));
+                    self.push_asm(ASM::JPOS(7));
+                    self.push_asm(ASM::LOAD(l));
+                    self.push_asm(ASM::SUB(current_divisor));
+                    self.push_asm(ASM::STORE(l));
+
+                    self.push_asm(ASM::LOAD(quotient));
+                    self.push_asm(ASM::ADD(current_multiple));
+                    self.push_asm(ASM::STORE(quotient));
+                    self.push_asm(ASM::JUMP(-17));
+                    self.push_asm(ASM::LOAD(quotient));
                     self.store_to_identifier(identifier);
+                    self.last_mem_slot += 6;
                 }
                 Expression::Multiplication(left, right) => {
                     self.generate_value(left);
-                    self.assembly_code
-                        .push(AsmInstruction::STORE(self.last_mem_slot));
+                    self.assembly_code.push(ASM::STORE(self.last_mem_slot));
 
                     match right {
                         Value::Number(val) => {
-                            if val.clone() != 2 {
-                                self.messages.push(ErrorDetails {
-                                    message: "cannot multiply by anything else than 2 (for now)"
-                                        .to_owned(),
-                                    location: *location,
-                                    severity: MessageSeverity::ERROR,
-                                })
+                            if val.clone() == 2 {
+                                self.push_asm(ASM::ADD(self.last_mem_slot));
+                                self.store_to_identifier(identifier);
+                                return;
                             }
                         }
-                        _ => self.messages.push(ErrorDetails {
-                            message: "cannot multiply by anything else than 2 (for now)".to_owned(),
-                            location: *location,
-                            severity: MessageSeverity::ERROR,
-                        }),
+                        _ => {}
                     }
-                    self.assembly_code
-                        .push(AsmInstruction::ADD(self.last_mem_slot));
+
+                    let l = self.last_mem_slot;
+                    self.last_mem_slot -= 1;
+
+                    let r = self.last_mem_slot;
+                    self.last_mem_slot -= 1;
+
+                    let result = self.last_mem_slot;
+                    self.last_mem_slot -= 1;
+
+                    self.generate_value(right);
+                    self.push_asm(ASM::STORE(r));
+                    self.push_asm(ASM::SET(0));
+                    self.push_asm(ASM::STORE(result));
+                    self.generate_value(left);
+                    self.push_asm(ASM::STORE(l));
+
+                    // loop start
+                    self.push_asm(ASM::JZERO(16)); 
+                    self.push_asm(ASM::HALF); // l%2
+                    self.push_asm(ASM::ADD(0)); // l%2
+                    self.push_asm(ASM::SUB(l)); // l%2
+
+                    self.push_asm(ASM::JZERO(5)); // IF l%2=1 THEN
+                    self.push_asm(ASM::LOAD(l));
+                    self.push_asm(ASM::LOAD(result)); // result := result + r;
+                    self.push_asm(ASM::ADD(r)); // result := result + r;
+                    self.push_asm(ASM::STORE(result)); // result := result + r;
+                                                       // ENDFI
+
+                    self.push_asm(ASM::LOAD(r));
+                    self.push_asm(ASM::ADD(r));
+                    self.push_asm(ASM::STORE(r));
+
+                    self.push_asm(ASM::LOAD(l));
+                    self.push_asm(ASM::HALF);
+                    self.push_asm(ASM::STORE(l));
+
+                    self.push_asm(ASM::JUMP(-16));
+
+                    self.push_asm(ASM::LOAD(result));
                     self.store_to_identifier(identifier);
+                    self.last_mem_slot += 3;
                 }
                 Expression::Modulo(left, right) => {
                     match right {
                         Value::Number(val) => {
-                            if val.clone() != 2 {
-                                self.messages.push(ErrorDetails {
-                                    message: "only mod 2 works now".to_owned(),
-                                    location: *location,
-                                    severity: MessageSeverity::ERROR,
-                                })
+                            if val.clone() == 2 {
+                                self.generate_value(left);
+                                self.push_asm(ASM::STORE(self.last_mem_slot));
+                                self.push_asm(ASM::HALF);
+                                self.push_asm(ASM::ADD(0));
+                                self.push_asm(ASM::STORE(self.last_mem_slot - 1));
+                                self.push_asm(ASM::LOAD(self.last_mem_slot));
+                                self.push_asm(ASM::SUB(self.last_mem_slot - 1));
+                                self.store_to_identifier(identifier);
                             }
                         }
-                        _ => self.messages.push(ErrorDetails {
-                            message: "only mod 2 works now".to_owned(),
-                            location: *location,
-                            severity: MessageSeverity::ERROR,
-                        }),
+                        _ => {}
                     }
+                    let sign = self.last_mem_slot;
+                    self.last_mem_slot -= 1;
+
+                    let quotient = self.last_mem_slot;
+                    self.last_mem_slot -= 1;
+
+                    let current_divisor = self.last_mem_slot;
+                    self.last_mem_slot -= 1;
+
+                    let current_multiple = self.last_mem_slot;
+                    self.last_mem_slot -= 1;
+                    let l = self.last_mem_slot;
+                    self.last_mem_slot -= 1;
+
+                    let r = self.last_mem_slot;
+                    self.last_mem_slot -= 1;
+
+                    self.push_asm(ASM::SET(0));
+                    self.push_asm(ASM::STORE(sign));
 
                     self.generate_value(left);
-                    self.push_asm(AsmInstruction::STORE(self.last_mem_slot));
-                    self.push_asm(AsmInstruction::HALF);
-                    self.push_asm(AsmInstruction::ADD(0));
-                    self.push_asm(AsmInstruction::STORE(self.last_mem_slot - 1));
-                    self.push_asm(AsmInstruction::LOAD(self.last_mem_slot));
-                    self.push_asm(AsmInstruction::SUB(self.last_mem_slot - 1));
+
+                    /*
+                    if left < 0:
+                    sign = -sign
+                    left = -left
+                    */
+                    self.push_asm(ASM::STORE(l));
+                    self.push_asm(ASM::JPOS(6));
+                    self.push_asm(ASM::SET(-1));
+                    self.push_asm(ASM::STORE(sign));
+                    self.push_asm(ASM::SET(0));
+                    self.push_asm(ASM::SUB(l));
+                    self.push_asm(ASM::STORE(l));
+
+                    /*
+                    if right < 0:
+                    sign = -sign
+                    right = -right
+                    */
+                    self.generate_value(right);
+                    self.push_asm(ASM::STORE(r));
+                    self.push_asm(ASM::JPOS(7));
+                    self.push_asm(ASM::SET(0));
+                    self.push_asm(ASM::LOAD(sign));
+                    self.push_asm(ASM::STORE(sign));
+                    self.push_asm(ASM::SET(0));
+                    self.push_asm(ASM::SUB(r));
+                    self.push_asm(ASM::STORE(r));
+
+                    self.push_asm(ASM::SET(0)); // quotient = 0
+                    self.push_asm(ASM::STORE(quotient));
+
+                    self.push_asm(ASM::LOAD(r));
+                    self.push_asm(ASM::STORE(current_divisor)); //current_divisor = right
+
+                    self.push_asm(ASM::SET(1));
+                    self.push_asm(ASM::STORE(current_multiple)); // current_multiple = 1
+
+                    /*
+                    while current_divisor <= left:
+                        current_divisor += current_divisor
+                        current_multiple += current_multiple
+                    */
+                    self.push_asm(ASM::LOAD(current_divisor));
+                    self.push_asm(ASM::SUB(l));
+                    self.push_asm(ASM::JPOS(8));
+
+                    self.push_asm(ASM::LOAD(current_divisor));
+                    self.push_asm(ASM::ADD(current_divisor));
+                    self.push_asm(ASM::STORE(current_divisor));
+
+                    self.push_asm(ASM::LOAD(current_multiple));
+                    self.push_asm(ASM::ADD(current_multiple));
+                    self.push_asm(ASM::STORE(current_multiple));
+
+                    self.push_asm(ASM::JUMP(-9));
+
+                    /*
+                    while right <= left:
+                        current_divisor //= 2
+                        current_multiple //= 2
+
+                        if current_divisor <= left:
+                            left -= current_divisor
+                            quotient += current_multiple
+                    */
+
+                    self.push_asm(ASM::LOAD(r));
+                    self.push_asm(ASM::SUB(l));
+                    self.push_asm(ASM::JPOS(16));
+
+                    self.push_asm(ASM::LOAD(current_multiple));
+                    self.push_asm(ASM::HALF);
+                    self.push_asm(ASM::STORE(current_multiple));
+
+                    self.push_asm(ASM::LOAD(current_divisor));
+                    self.push_asm(ASM::HALF);
+                    self.push_asm(ASM::STORE(current_divisor));
+
+                    self.push_asm(ASM::SUB(l));
+                    self.push_asm(ASM::JPOS(7));
+                    self.push_asm(ASM::LOAD(l));
+                    self.push_asm(ASM::SUB(current_divisor));
+                    self.push_asm(ASM::STORE(l));
+
+                    self.push_asm(ASM::LOAD(quotient));
+                    self.push_asm(ASM::ADD(current_multiple));
+                    self.push_asm(ASM::STORE(quotient));
+                    self.push_asm(ASM::JUMP(-17));
+                    self.push_asm(ASM::LOAD(l));
                     self.store_to_identifier(identifier);
+                    self.last_mem_slot += 6;
                 }
             }
         } else {
@@ -2017,7 +2219,7 @@ impl CodeGenerator {
                 location: _,
             } => self.generate_expression(command),
             Command::Read(identifier) => {
-                self.push_asm(AsmInstruction::GET(0));
+                self.push_asm(ASM::GET(0));
                 self.store_to_identifier(identifier);
             }
             Command::If {
@@ -2036,16 +2238,16 @@ impl CodeGenerator {
 
                 if let Some(instruction) = self.assembly_code.get_mut(jump_pos) {
                     match instruction {
-                        AsmInstruction::JZERO(offset) => {
+                        ASM::JZERO(offset) => {
                             *offset = (then_end - then_start + 1) as i64;
                         }
-                        AsmInstruction::JPOS(offset) => {
+                        ASM::JPOS(offset) => {
                             *offset = (then_end - then_start + 1) as i64;
                         }
-                        AsmInstruction::JNEG(offset) => {
+                        ASM::JNEG(offset) => {
                             *offset = (then_end - then_start + 1) as i64;
                         }
-                        AsmInstruction::JUMP(offset) => {
+                        ASM::JUMP(offset) => {
                             *offset = (then_end - then_start + 1) as i64;
                         }
                         _ => {}
@@ -2065,7 +2267,7 @@ impl CodeGenerator {
                 for cmd in then_commands {
                     self.genearate_command(cmd);
                 }
-                self.push_asm(AsmInstruction::JUMP(0));
+                self.push_asm(ASM::JUMP(0));
                 let then_end = self.assembly_code.len() as i64;
 
                 let else_start = self.assembly_code.len() as i64;
@@ -2076,23 +2278,22 @@ impl CodeGenerator {
 
                 if let Some(instruction) = self.assembly_code.get_mut(jump_pos) {
                     match instruction {
-                        AsmInstruction::JZERO(offset) => {
+                        ASM::JZERO(offset) => {
                             *offset = (then_end - then_start + 1) as i64;
                         }
-                        AsmInstruction::JPOS(offset) => {
+                        ASM::JPOS(offset) => {
                             *offset = (then_end - then_start + 1) as i64;
                         }
-                        AsmInstruction::JNEG(offset) => {
+                        ASM::JNEG(offset) => {
                             *offset = (then_end - then_start + 1) as i64;
                         }
-                        AsmInstruction::JUMP(offset) => {
+                        ASM::JUMP(offset) => {
                             *offset = (then_end - then_start + 1) as i64;
                         }
                         _ => {}
                     }
                 }
-                if let Some(AsmInstruction::JUMP(offset)) =
-                    self.assembly_code.get_mut((then_end - 1) as usize)
+                if let Some(ASM::JUMP(offset)) = self.assembly_code.get_mut((then_end - 1) as usize)
                 {
                     *offset = (else_end - else_start + 1) as i64;
                 } else {
@@ -2127,21 +2328,21 @@ impl CodeGenerator {
 
                 let loop_end = self.assembly_code.len() as i64;
                 self.assembly_code
-                    .push(AsmInstruction::JUMP(before_condition - loop_end));
+                    .push(ASM::JUMP(before_condition - loop_end));
 
                 let after_loop = self.assembly_code.len() as i64;
                 if let Some(instruction) = self.assembly_code.get_mut(jump_pos) {
                     match instruction {
-                        AsmInstruction::JZERO(offset) => {
+                        ASM::JZERO(offset) => {
                             *offset = after_loop - after_condition + 1;
                         }
-                        AsmInstruction::JPOS(offset) => {
+                        ASM::JPOS(offset) => {
                             *offset = after_loop - after_condition + 1;
                         }
-                        AsmInstruction::JNEG(offset) => {
+                        ASM::JNEG(offset) => {
                             *offset = after_loop - after_condition + 1;
                         }
-                        AsmInstruction::JUMP(offset) => {
+                        ASM::JUMP(offset) => {
                             *offset = after_loop - after_condition + 1;
                         }
                         _ => {}
@@ -2178,16 +2379,16 @@ impl CodeGenerator {
 
                 if let Some(instruction) = self.assembly_code.get_mut(jump_pos) {
                     match instruction {
-                        AsmInstruction::JZERO(offset) => {
+                        ASM::JZERO(offset) => {
                             *offset = loop_start - after_condition + 1;
                         }
-                        AsmInstruction::JPOS(offset) => {
+                        ASM::JPOS(offset) => {
                             *offset = loop_start - after_condition + 1;
                         }
-                        AsmInstruction::JNEG(offset) => {
+                        ASM::JNEG(offset) => {
                             *offset = loop_start - after_condition + 1;
                         }
-                        AsmInstruction::JUMP(offset) => {
+                        ASM::JUMP(offset) => {
                             *offset = loop_start - after_condition + 1;
                         }
                         _ => {}
@@ -2196,7 +2397,7 @@ impl CodeGenerator {
             }
             Command::Write(value) => {
                 self.generate_value(value);
-                self.push_asm(AsmInstruction::PUT(0));
+                self.push_asm(ASM::PUT(0));
             }
             Command::ProcedureCall {
                 proc_name,
@@ -2226,11 +2427,11 @@ impl CodeGenerator {
                 for (i, arg) in arguments.iter().enumerate() {
                     let a = self.get_variable_current_scope(&arg.name).unwrap();
                     if a.is_pointer {
-                        self.push_asm(AsmInstruction::LOAD(a.memory));
-                        self.push_asm(AsmInstruction::STORE(return_loc.memory + i + 1));
+                        self.push_asm(ASM::LOAD(a.memory));
+                        self.push_asm(ASM::STORE(return_loc.memory + i + 1));
                     } else {
-                        self.push_asm(AsmInstruction::SET(a.memory as i64));
-                        self.push_asm(AsmInstruction::STORE(return_loc.memory + i + 1));
+                        self.push_asm(ASM::SET(a.memory as i64));
+                        self.push_asm(ASM::STORE(return_loc.memory + i + 1));
                     }
 
                     let arg_is_bool = *proc_info.args.get(i).unwrap();
@@ -2254,13 +2455,10 @@ impl CodeGenerator {
 
                 let current_loc = self.assembly_code.len() as i64;
                 let jump_dist = jump_target - current_loc - 2;
-                self.assembly_code
-                    .push(AsmInstruction::SET(current_loc + 3));
-                self.assembly_code
-                    .push(AsmInstruction::STORE(return_loc.memory));
+                self.assembly_code.push(ASM::SET(current_loc + 3));
+                self.assembly_code.push(ASM::STORE(return_loc.memory));
 
-                self.assembly_code
-                    .push(AsmInstruction::JUMP(jump_dist as i64));
+                self.assembly_code.push(ASM::JUMP(jump_dist as i64));
             }
             Command::For {
                 variable,
@@ -2285,19 +2483,19 @@ impl CodeGenerator {
                 self.last_mem_slot -= 1;
 
                 self.generate_value(&from);
-                self.push_asm(AsmInstruction::STORE(for_iter_loc));
+                self.push_asm(ASM::STORE(for_iter_loc));
 
                 self.generate_value(&to);
-                self.push_asm(AsmInstruction::STORE(for_num_iters));
+                self.push_asm(ASM::STORE(for_num_iters));
 
                 match direction {
                     ForDirection::Ascending => {
                         let loop_start = self.assembly_code.len() as i64;
 
-                        self.push_asm(AsmInstruction::LOAD(for_iter_loc));
-                        self.push_asm(AsmInstruction::SUB(for_num_iters));
+                        self.push_asm(ASM::LOAD(for_iter_loc));
+                        self.push_asm(ASM::SUB(for_num_iters));
 
-                        let jump_instruction = AsmInstruction::JPOS(0);
+                        let jump_instruction = ASM::JPOS(0);
                         let jump_pos = self.assembly_code.len();
                         self.push_asm(jump_instruction);
 
@@ -2305,18 +2503,16 @@ impl CodeGenerator {
                             self.genearate_command(cmd);
                         }
 
-                        self.push_asm(AsmInstruction::LOAD(for_iter_loc));
-                        self.push_asm(AsmInstruction::SET(1));
-                        self.push_asm(AsmInstruction::ADD(for_iter_loc));
-                        self.push_asm(AsmInstruction::STORE(for_iter_loc));
+                        self.push_asm(ASM::LOAD(for_iter_loc));
+                        self.push_asm(ASM::SET(1));
+                        self.push_asm(ASM::ADD(for_iter_loc));
+                        self.push_asm(ASM::STORE(for_iter_loc));
 
-                        self.push_asm(AsmInstruction::JUMP(
-                            loop_start - self.assembly_code.len() as i64,
-                        ));
+                        self.push_asm(ASM::JUMP(loop_start - self.assembly_code.len() as i64));
 
                         let after_loop = self.assembly_code.len() as i64;
                         if let Some(instruction) = self.assembly_code.get_mut(jump_pos) {
-                            if let AsmInstruction::JPOS(offset) = instruction {
+                            if let ASM::JPOS(offset) = instruction {
                                 *offset = after_loop - jump_pos as i64; // -2 to account for LOAD SUB before jump pos
                             }
                         }
@@ -2324,10 +2520,10 @@ impl CodeGenerator {
                     ForDirection::Descending => {
                         let loop_start = self.assembly_code.len() as i64;
 
-                        self.push_asm(AsmInstruction::LOAD(for_iter_loc));
-                        self.push_asm(AsmInstruction::SUB(for_num_iters));
+                        self.push_asm(ASM::LOAD(for_iter_loc));
+                        self.push_asm(ASM::SUB(for_num_iters));
 
-                        let jump_instruction = AsmInstruction::JNEG(0);
+                        let jump_instruction = ASM::JNEG(0);
                         let jump_pos = self.assembly_code.len();
                         self.push_asm(jump_instruction);
 
@@ -2335,18 +2531,16 @@ impl CodeGenerator {
                             self.genearate_command(cmd);
                         }
 
-                        self.push_asm(AsmInstruction::LOAD(for_iter_loc));
-                        self.push_asm(AsmInstruction::SET(1));
-                        self.push_asm(AsmInstruction::SUB(for_iter_loc));
-                        self.push_asm(AsmInstruction::STORE(for_iter_loc));
+                        self.push_asm(ASM::LOAD(for_iter_loc));
+                        self.push_asm(ASM::SET(1));
+                        self.push_asm(ASM::SUB(for_iter_loc));
+                        self.push_asm(ASM::STORE(for_iter_loc));
 
-                        self.push_asm(AsmInstruction::JUMP(
-                            loop_start - self.assembly_code.len() as i64,
-                        ));
+                        self.push_asm(ASM::JUMP(loop_start - self.assembly_code.len() as i64));
 
                         let after_loop = self.assembly_code.len() as i64;
                         if let Some(instruction) = self.assembly_code.get_mut(jump_pos) {
-                            if let AsmInstruction::JNEG(offset) = instruction {
+                            if let ASM::JNEG(offset) = instruction {
                                 *offset = after_loop - jump_pos as i64; // -2 to account for LOAD SUB before jump pos
                             }
                         }
@@ -2411,8 +2605,7 @@ impl CodeGenerator {
             self.genearate_command(command);
         }
 
-        self.assembly_code
-            .push(AsmInstruction::RTRN(return_address_location));
+        self.assembly_code.push(ASM::RTRN(return_address_location));
         self.current_scope = format!("");
     }
 
@@ -2421,8 +2614,9 @@ impl CodeGenerator {
         if recursive_calls.len() > 0 {
             self.messages.push(ErrorDetails {
                 message: format!(
-                    "Recrusive calls are not allowed {} -> {:?}",
-                    recursive_calls[0].procedure_name, recursive_calls[0].recursive_path
+                    "Recrusive calls are not allowed {} : {}",
+                    recursive_calls[0].procedure_name,
+                    recursive_calls[0].recursive_path.join(" <- ")
                 ),
                 location: recursive_calls[0]
                     .location
@@ -2433,7 +2627,7 @@ impl CodeGenerator {
         }
 
         if ast.procedures.len() > 0 {
-            self.push_asm(AsmInstruction::JUMP(0));
+            self.push_asm(ASM::JUMP(0));
         }
 
         for procedure in &ast.procedures {
@@ -2444,7 +2638,7 @@ impl CodeGenerator {
             let len_after_proc = self.assembly_code.len();
             let a = self.assembly_code.get_mut(0).unwrap();
             match a {
-                AsmInstruction::JUMP(dist) => {
+                ASM::JUMP(dist) => {
                     *dist = len_after_proc as i64;
                 }
                 _ => {}
@@ -2479,7 +2673,7 @@ impl CodeGenerator {
         }
 
         self.save_dbg_info("awd.json");
-        self.push_asm(AsmInstruction::HALT);
+        self.push_asm(ASM::HALT);
     }
 
     fn save_dbg_info(&self, filename: &str) -> std::io::Result<()> {

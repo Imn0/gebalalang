@@ -1,5 +1,5 @@
 TODO 
-mul div mod
+add labels for jumps
 tests for proc_call
 cleanup unwraps and panics
 more tests 
