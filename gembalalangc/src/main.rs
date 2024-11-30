@@ -1034,9 +1034,9 @@ fn main() -> std::io::Result<()> {
         output += &format!("{}\n", instruction);
     }
     println!("{}", output);
-    let mut file = File::create(args.out)?;
+    let mut file = File::create(args.out.clone())?;
     file.write_all(output.as_bytes())?;
-    codeb.save_dbg_info("da");
+    codeb.save_dbg_info(&format!("{}.mem.json", args.out));
     Ok(())
 }
 
@@ -1601,13 +1601,13 @@ impl CodeGenerator {
                                     self.push_asm(ASM::LOADI(0));
                                 }
                                 (false, true) => {
-                                    self.push_asm(ASM::LOAD(idx_loc.memory));
-                                    self.push_asm(ASM::ADD(base_loc.memory));
+                                    self.push_asm(ASM::SET(base_loc.memory as i64));
+                                    self.push_asm(ASM::ADDI(idx_loc.memory));
                                     self.push_asm(ASM::LOADI(0));
                                 }
                                 (true, true) => {
                                     self.push_asm(ASM::LOADI(idx_loc.memory));
-                                    self.push_asm(ASM::ADD(base_loc.memory));
+                                    self.push_asm(ASM::ADDI(base_loc.memory));
                                     self.push_asm(ASM::LOADI(0));
                                 }
                             }
@@ -2672,7 +2672,7 @@ impl CodeGenerator {
             self.genearate_command(command);
         }
 
-        self.save_dbg_info("awd.json");
+        
         self.push_asm(ASM::HALT);
     }
 

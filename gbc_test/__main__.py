@@ -13,5 +13,7 @@ for test in tests_base_dir:
 
 test_runner = TestRunner(cfg)
 r = test_runner(tests)
-old = TestResultPrinter.load_data_from_file("aa.dat")
-TestResultPrinter.compare_results(old, r)
+# old = TestResultPrinter.load_data_from_file("aa.dat")
+# TestResultPrinter.compare_results(old, r)
+
+TestResultPrinter.print_data(r)

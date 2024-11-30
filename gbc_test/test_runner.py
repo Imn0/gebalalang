@@ -44,7 +44,9 @@ class TestRunner:
             r = self._compile(test_file, compiled_name)
             if r:
                 test_cases = self.parse_pragma_tests(test_file)
-                r = self.run_test("a.mr", test_cases)
+                if len(test_cases) == 0:
+                    continue
+                r = self.run_test(compiled_name, test_cases)
                 results.append(r)
             else:
                 print(f"Cant compile {test_file}")
@@ -92,6 +94,7 @@ class TestRunner:
             if line.startswith("#pragma test"):
                 if not re.match(valid_pragma_pattern, line):
                     print(f"File {file_path} invalid or no pragma test")
+                    return []
 
                 match = re.search(full_pragma_pattern, line)
                 if match:
@@ -124,6 +127,8 @@ class TestRunner:
             elif line.startswith("#pragma "):
                 if not line.startswith("#pragma test"):
                     print(f"File {file_path} invalid or no pragma test")
+                    return []
+
             
 
         return test_cases
@@ -136,8 +141,9 @@ class TestRunner:
         name = ""
         for i, test_case in enumerate(test_cases):
             name = test_case.name
+            print(f"running {name}")
             command = [self.cfg.vm_path, compiled_file]
-            process = subprocess.Popen(
+            result = subprocess.Popen(
                 command,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
@@ -146,11 +152,19 @@ class TestRunner:
             )
 
             input_data = "\n".join(test_case.input_text)
-            stdout, stderr = process.communicate(input_data)
+            
+            try:
+                stdout, stderr = result.communicate(input_data, timeout=5)
+            except subprocess.TimeoutExpired:
+                result.kill()
+                stdout, stderr = result.communicate()  
+                print(f"test {name} took too long and was killed. stderr: {stderr}")
+                return TestResult(name, False, 0, 0.0, 0.0)
 
-            rtn = process.wait(10.0)
-            if rtn != 0:
-                return TestResult(name,False, 0, 0.0, 0.0)
+            if result.returncode != 0:
+                print(f"test {name} failed with return code {result.returncode}. stderr: {stderr}")
+                return TestResult(name, False, 0, 0.0, 0.0)
+
 
             output = stdout.strip().split("\n")
 
@@ -162,6 +176,8 @@ class TestRunner:
             r_cost = re.search(regex_cost, stderr)
             r_io_cost = re.search(regex_io_cost, stderr)
             if r_inst is None or r_cost is None or r_io_cost is None:
+                print(f"Failed to parse results of{name} .")
+                
                 return TestResult(name,False, 0, 0.0, 0.0)
 
             num_instructions = int(r_inst.group(1))
@@ -176,6 +192,7 @@ class TestRunner:
 
             for i, o in enumerate(output):
                 if test_case.expected_output[i] != o:
+                    print(f"expected output of {name} is\n{test_case.expected_output}\nbut got\n{output} .")
                     return TestResult(name,False, 0, 0.0, 0.0)
 
         return TestResult(name, True, num_instructions, avg_cost, avg_cost_wout_io)

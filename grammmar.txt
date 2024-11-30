@@ -1,4 +1,5 @@
 TODO 
+tests for memory acces, arrays etc
 add labels for jumps
 tests for proc_call
 cleanup unwraps and panics
