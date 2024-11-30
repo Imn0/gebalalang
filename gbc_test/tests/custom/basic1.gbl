@@ -1,0 +1,10 @@
+#pragma test in(12) out(12, 12)
+#pragma test in(1) out(1, 1)
+
+PROGRAM IS 
+    a
+BEGIN
+    READ a;
+    WRITE a;
+    WRITE a;
+END
