@@ -5,6 +5,8 @@ from gbc_test.config import CFG
 from gbc_test.print_data import TestResultPrinter
 
 cfg = CFG()
+cfg.recompile()
+
 tests_base_dir = get_all_dirs(cfg.tests_dir)
 
 tests: dict[str, list[str]] = {}

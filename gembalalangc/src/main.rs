@@ -1036,7 +1036,7 @@ fn main() -> std::io::Result<()> {
     println!("{}", output);
     let mut file = File::create(args.out.clone())?;
     file.write_all(output.as_bytes())?;
-    codeb.save_dbg_info(&format!("{}.mem.json", args.out));
+    // codeb.save_dbg_info(&format!("{}.mem.json", args.out));
     Ok(())
 }
 
@@ -1307,7 +1307,7 @@ impl CodeGenerator {
         CodeGenerator {
             symbols: HashMap::new(),
             procedures: HashMap::new(),
-            next_memory_slot: 1,
+            next_memory_slot: 13213,
             last_mem_slot: 0x4000000000000000,
             assembly_code: Vec::new(),
             messages: Vec::new(),
@@ -1606,8 +1606,8 @@ impl CodeGenerator {
                                     self.push_asm(ASM::LOADI(0));
                                 }
                                 (true, true) => {
-                                    self.push_asm(ASM::LOADI(idx_loc.memory));
-                                    self.push_asm(ASM::ADDI(base_loc.memory));
+                                    self.push_asm(ASM::LOAD(base_loc.memory));
+                                    self.push_asm(ASM::ADDI(idx_loc.memory));
                                     self.push_asm(ASM::LOADI(0));
                                 }
                             }
@@ -1742,16 +1742,16 @@ impl CodeGenerator {
                             self.push_asm(ASM::STOREI(self.last_mem_slot));
                         }
                         (false, true) => {
-                            self.push_asm(ASM::LOAD(idx_loc.memory));
-                            self.push_asm(ASM::ADD(dst_loc.memory));
+                            self.push_asm(ASM::SET(dst_loc.memory as i64));
+                            self.push_asm(ASM::ADDI(idx_loc.memory));
                             self.push_asm(ASM::STORE(self.last_mem_slot));
-
+                            
                             self.push_asm(ASM::LOAD(self.last_mem_slot - 1));
                             self.push_asm(ASM::STOREI(self.last_mem_slot));
                         }
                         (true, true) => {
-                            self.push_asm(ASM::LOADI(idx_loc.memory));
-                            self.push_asm(ASM::ADD(dst_loc.memory));
+                            self.push_asm(ASM::LOAD(dst_loc.memory));
+                            self.push_asm(ASM::ADDI(idx_loc.memory));
                             self.push_asm(ASM::STORE(self.last_mem_slot));
 
                             self.push_asm(ASM::LOAD(self.last_mem_slot - 1));

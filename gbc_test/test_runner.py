@@ -63,7 +63,7 @@ class TestRunner:
             stderr=subprocess.PIPE,
             text=True,
         )
-        _, _ = process.communicate()
+        stdout, stderr = process.communicate()
 
         rtn = process.wait()
 

@@ -1,0 +1,40 @@
+#pragma test in(12, 22) out(12, 32, 2, 3, 5,2, 3, 5)
+
+PROCEDURE test(n, c, T arr) IS
+a, b, tab[2:300], _n
+BEGIN
+    a:=12;
+    n:=32;
+    WRITE a;
+    WRITE n;
+
+    tab[2]:=2;
+    WRITE tab[2];
+
+    tab[a]:=3;
+    WRITE tab[12];
+    
+    _n:=n;
+    tab[n]:=5;
+    WRITE tab[32];
+
+    arr[2]:=2;
+    WRITE arr[2];
+
+    arr[a]:=3;
+    WRITE arr[12];
+    
+    _n:=n;
+    arr[n]:=5;
+    WRITE arr[32];
+
+
+END
+
+PROGRAM IS 
+    a, b, arr[-12:33]
+BEGIN
+    READ a;
+    READ b;
+    test(a, b, arr);
+END

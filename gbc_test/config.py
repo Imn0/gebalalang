@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 import os
+import subprocess
+
 
 @dataclass(frozen=True)
 class CFG:
@@ -27,3 +29,9 @@ class CFG:
     def tests_dir(self) -> str:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         return os.path.join(script_dir, self._test_dir)
+
+    def recompile(self):
+        cmd = ["cargo","build", "--manifest-path=gembalalangc/Cargo.toml"]
+        process = subprocess.run(
+            cmd,
+        )
