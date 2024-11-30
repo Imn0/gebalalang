@@ -1626,7 +1626,7 @@ impl CodeGenerator {
                                 self.push_asm(ASM::LOAD(loc.memory));
                             } else {
                                 self.push_asm(ASM::SET(*idx_num));
-                                self.assembly_code.push(ASM::ADD(symbol_loc.memory));
+                                self.push_asm(ASM::ADD(symbol_loc.memory));
                                 self.push_asm(ASM::LOADI(0));
                             }
                         }
@@ -1686,7 +1686,7 @@ impl CodeGenerator {
         if let Some(dest_idx) = &ident.index {
             match dest_idx {
                 Either::Left(idx_name) => {
-                    self.assembly_code.push(ASM::STORE(self.last_mem_slot - 1));
+                    self.push_asm(ASM::STORE(self.last_mem_slot - 1));
 
                     if !dst_loc.is_array {
                         self.messages.push(ErrorDetails {
@@ -1805,9 +1805,9 @@ impl CodeGenerator {
             }
 
             if dest_loc.is_pointer {
-                self.assembly_code.push(ASM::STOREI(dest_loc.memory));
+                self.push_asm(ASM::STOREI(dest_loc.memory));
             } else {
-                self.assembly_code.push(ASM::STORE(dest_loc.memory));
+                self.push_asm(ASM::STORE(dest_loc.memory));
             }
         }
     }
@@ -1816,46 +1816,46 @@ impl CodeGenerator {
         match condition {
             Condition::NotEqual(left, right) => {
                 self.generate_value(left);
-                self.assembly_code.push(ASM::STORE(self.last_mem_slot));
+                self.push_asm(ASM::STORE(self.last_mem_slot));
                 self.generate_value(right);
-                self.assembly_code.push(ASM::SUB(self.last_mem_slot));
+                self.push_asm(ASM::SUB(self.last_mem_slot));
                 ASM::JZERO(0)
             }
             Condition::Equal(left, right) => {
                 self.generate_value(left);
-                self.assembly_code.push(ASM::STORE(self.last_mem_slot));
+                self.push_asm(ASM::STORE(self.last_mem_slot));
                 self.generate_value(right);
-                self.assembly_code.push(ASM::SUB(self.last_mem_slot));
+                self.push_asm(ASM::SUB(self.last_mem_slot));
                 self.push_asm(ASM::JZERO(2));
                 ASM::JUMP(0)
             }
             Condition::LessOrEqual(left, right) => {
                 self.generate_value(right);
-                self.assembly_code.push(ASM::STORE(self.last_mem_slot));
+                self.push_asm(ASM::STORE(self.last_mem_slot));
                 self.generate_value(left);
-                self.assembly_code.push(ASM::SUB(self.last_mem_slot));
+                self.push_asm(ASM::SUB(self.last_mem_slot));
                 ASM::JPOS(0)
             }
             Condition::GreaterOrEqual(left, right) => {
                 self.generate_value(left);
-                self.assembly_code.push(ASM::STORE(self.last_mem_slot));
+                self.push_asm(ASM::STORE(self.last_mem_slot));
                 self.generate_value(right);
-                self.assembly_code.push(ASM::SUB(self.last_mem_slot));
+                self.push_asm(ASM::SUB(self.last_mem_slot));
                 ASM::JPOS(0)
             }
             Condition::GreaterThan(left, right) => {
                 self.generate_value(right);
-                self.assembly_code.push(ASM::STORE(self.last_mem_slot));
+                self.push_asm(ASM::STORE(self.last_mem_slot));
                 self.generate_value(left);
-                self.assembly_code.push(ASM::SUB(self.last_mem_slot));
+                self.push_asm(ASM::SUB(self.last_mem_slot));
                 self.push_asm(ASM::JPOS(2));
                 ASM::JUMP(0)
             }
             Condition::LessThan(left, right) => {
                 self.generate_value(left);
-                self.assembly_code.push(ASM::STORE(self.last_mem_slot));
+                self.push_asm(ASM::STORE(self.last_mem_slot));
                 self.generate_value(right);
-                self.assembly_code.push(ASM::SUB(self.last_mem_slot));
+                self.push_asm(ASM::SUB(self.last_mem_slot));
                 self.push_asm(ASM::JPOS(2));
                 ASM::JUMP(0)
             }
@@ -1876,21 +1876,21 @@ impl CodeGenerator {
                 }
                 Expression::Addition(left, right) => {
                     self.generate_value(left);
-                    self.assembly_code.push(ASM::STORE(self.last_mem_slot));
+                    self.push_asm(ASM::STORE(self.last_mem_slot));
                     self.generate_value(right);
-                    self.assembly_code.push(ASM::ADD(self.last_mem_slot));
+                    self.push_asm(ASM::ADD(self.last_mem_slot));
                     self.store_to_identifier(identifier);
                 }
                 Expression::Subtraction(left, right) => {
                     self.generate_value(right);
-                    self.assembly_code.push(ASM::STORE(self.last_mem_slot));
+                    self.push_asm(ASM::STORE(self.last_mem_slot));
                     self.generate_value(left);
-                    self.assembly_code.push(ASM::SUB(self.last_mem_slot));
+                    self.push_asm(ASM::SUB(self.last_mem_slot));
                     self.store_to_identifier(identifier);
                 }
                 Expression::Division(left, right) => {
                     self.generate_value(left);
-                    self.assembly_code.push(ASM::STORE(self.last_mem_slot));
+                    self.push_asm(ASM::STORE(self.last_mem_slot));
 
                     match right {
                         Value::Number(val) => {
@@ -2019,7 +2019,7 @@ impl CodeGenerator {
                 }
                 Expression::Multiplication(left, right) => {
                     self.generate_value(left);
-                    self.assembly_code.push(ASM::STORE(self.last_mem_slot));
+                    self.push_asm(ASM::STORE(self.last_mem_slot));
 
                     match right {
                         Value::Number(val) => {
@@ -2455,10 +2455,10 @@ impl CodeGenerator {
 
                 let current_loc = self.assembly_code.len() as i64;
                 let jump_dist = jump_target - current_loc - 2;
-                self.assembly_code.push(ASM::SET(current_loc + 3));
-                self.assembly_code.push(ASM::STORE(return_loc.memory));
+                self.push_asm(ASM::SET(current_loc + 3));
+                self.push_asm(ASM::STORE(return_loc.memory));
 
-                self.assembly_code.push(ASM::JUMP(jump_dist as i64));
+                self.push_asm(ASM::JUMP(jump_dist as i64));
             }
             Command::For {
                 variable,
@@ -2605,7 +2605,7 @@ impl CodeGenerator {
             self.genearate_command(command);
         }
 
-        self.assembly_code.push(ASM::RTRN(return_address_location));
+        self.push_asm(ASM::RTRN(return_address_location));
         self.current_scope = format!("");
     }
 

@@ -1,10 +1,12 @@
-#pragma test in() out(321, 321, 12)
+#pragma test in() out(321, 222, 12)
 
 PROCEDURE bb(T as, idx) IS 
+    b
 BEGIN
+    b:=222;
     WRITE idx;
-    as[idx]:=idx;
-    WRITE as[idx];
+    as[321]:=222;
+    WRITE as[321];
     idx:=12;
 END
 
