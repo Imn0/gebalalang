@@ -2,7 +2,8 @@
     "name": "gbl",
     "displayName": "gbl",
     "description": "gbl programming language support",
-    "version": "0.0.1",
+    "version": "0.0.3",
+    "publisher": "imno",
     "engines": {
         "vscode": "^1.95.0"
     },
@@ -32,10 +33,13 @@
         ],
         "iconThemes": [
             {
-                "id": "gembalalang-icons",
-                "label": "Gembalalang Icons",
+                "id": "gbl-icons",
+                "label": "gbl Icons",
                 "path": "./icon-theme.json"
             }
         ]
+    },
+    "dependencies": {
+        "vsce": "^2.15.0"
     }
 }

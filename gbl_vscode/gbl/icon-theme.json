@@ -1,10 +1,40 @@
 {
+  "$schema": "vscode://schemas/icon-theme",
   "iconDefinitions": {
     "gembalalang-icon": {
       "iconPath": "./images/gbl.png"
+    },
+    "_file": {
+      "iconPath": "./images/file.svg"
+    },
+    "_folder": {
+      "iconPath": "./images/folder.svg"
+    },
+    "_folder_open": {
+      "iconPath": "./images/folder-open.svg"
     }
   },
   "fileExtensions": {
-    "gbl": "gembalalang-icon"
+    "gbl": "gembalalang-icon",
+    "imp": "gembalalang-icon"
+  },
+  "folderExpanded": "_folder_open",
+  "folder": "_folder",
+  "file": "_file",
+  "light": {
+    "fileExtensions": {
+      "gbl": "gembalalang-icon",
+      "imp": "gembalalang-icon"
+    }
+  },
+  "dark": {
+    "fileExtensions": {
+      "gbl": "gembalalang-icon",
+      "imp": "gembalalang-icon"
+    }
+  },
+  "hidesExplorerArrows": false,
+  "highContrast": {
+    "file": "_file"
   }
 }
