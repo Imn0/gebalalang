@@ -1,7 +1,7 @@
 #pragma test in(20) out(2432902008176640000, 6765)
 
 PROGRAM IS
-    f[0:100], s[0:100], i[0:100], n, j, k, l
+    f[0:100], s[0:100], i[0:100], n, k, l
 BEGIN
     READ n;
     f[0] := 0;
