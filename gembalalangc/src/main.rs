@@ -659,7 +659,7 @@ impl<'a> AstBuilder<'a> {
                 "%" => Ok(Expression::Modulo(first_val, second_val)),
 
                 _ => {
-                    return Err(format!("unsuported expression {}", op.kind()));
+                    return Err(format!("unsupported expression {}", op.kind()));
                 }
             }
         } else {
@@ -1007,10 +1007,10 @@ fn main() -> std::io::Result<()> {
     let ast = ast_builder.build_ast(&tree);
     // print!("{:#?}", ast);
     let optimized_ast = optimize_ast(ast);
-    let mut codeb = CodeGenerator::new();
-    codeb.generate_asm(optimized_ast);
+    let mut code_asm = CodeGenerator::new();
+    code_asm.generate_asm(optimized_ast);
 
-    let is_error: bool = codeb
+    let is_error: bool = code_asm
         .messages
         .iter()
         .filter(|m| m.severity == MessageSeverity::ERROR || m.severity == MessageSeverity::FATAL)
@@ -1019,14 +1019,14 @@ fn main() -> std::io::Result<()> {
         > 0;
 
     let mut context = SourceContext::new(code.as_str(), &input_file);
-    context.add_messages(codeb.messages.clone());
+    context.add_messages(code_asm.messages.clone());
     context.display()?;
 
     if is_error {
         std::process::exit(1);
     }
 
-    let asm: Vec<ASM> = codeb.assembly_code.clone();
+    let asm: Vec<ASM> = code_asm.assembly_code.clone();
 
     let mut output = String::new();
 
@@ -1036,7 +1036,6 @@ fn main() -> std::io::Result<()> {
     println!("{}", output);
     let mut file = File::create(args.out.clone())?;
     file.write_all(output.as_bytes())?;
-    // codeb.save_dbg_info(&format!("{}.mem.json", args.out));
     Ok(())
 }
 
@@ -1555,7 +1554,7 @@ impl CodeGenerator {
 
                             if !base_loc.is_array {
                                 self.messages.push(ErrorDetails {
-                                    message: "cannot acces it like that".to_owned(),
+                                    message: "cannot access it like that".to_owned(),
                                     location: ident.location,
                                     severity: MessageSeverity::WARNING,
                                 });
@@ -1574,7 +1573,7 @@ impl CodeGenerator {
 
                             if idx_loc.is_array {
                                 self.messages.push(ErrorDetails {
-                                    message: format!("Cannot acces {} like that.", ident.name),
+                                    message: format!("Cannot access {} like that.", ident.name),
                                     location: ident.location,
                                     severity: MessageSeverity::WARNING,
                                 });
@@ -1616,7 +1615,7 @@ impl CodeGenerator {
                             let symbol_loc = self.get_variable_current_scope(&ident.name).unwrap();
                             if !symbol_loc.is_array {
                                 self.messages.push(ErrorDetails {
-                                    message: "cannot acces it like that".to_owned(),
+                                    message: "cannot access it like that".to_owned(),
                                     location: ident.location,
                                     severity: MessageSeverity::WARNING,
                                 });
@@ -1636,7 +1635,7 @@ impl CodeGenerator {
                     if let Ok(loc) = result {
                         if loc.is_array {
                             self.messages.push(ErrorDetails {
-                                message: "cannot acces it like thatdaw".to_owned(),
+                                message: "cannot access it like that way".to_owned(),
                                 location: ident.location,
                                 severity: MessageSeverity::WARNING,
                             });
@@ -1690,7 +1689,7 @@ impl CodeGenerator {
 
                     if !dst_loc.is_array {
                         self.messages.push(ErrorDetails {
-                            message: format!("Cannot acces {} it like that", ident.name),
+                            message: format!("Cannot access {} it like that", ident.name),
                             location: ident.location,
                             severity: MessageSeverity::WARNING,
                         });
@@ -1711,7 +1710,7 @@ impl CodeGenerator {
 
                     if idx_loc.is_array {
                         self.messages.push(ErrorDetails {
-                            message: format!("Cannot acces {} it like that", idx_name),
+                            message: format!("Cannot access {} it like that", idx_name),
                             location: ident.location,
                             severity: MessageSeverity::WARNING,
                         });
@@ -1763,7 +1762,7 @@ impl CodeGenerator {
                     let dest_loc = self.get_variable_current_scope(&ident.name).unwrap();
                     if !dest_loc.is_array {
                         self.messages.push(ErrorDetails {
-                            message: "cannot acces it like that".to_owned(),
+                            message: "cannot access it like that".to_owned(),
                             location: ident.location,
                             severity: MessageSeverity::WARNING,
                         });
@@ -1798,7 +1797,7 @@ impl CodeGenerator {
             }
             if dest_loc.is_array {
                 self.messages.push(ErrorDetails {
-                    message: "cannot acces it like that".to_owned(),
+                    message: "cannot access it like that".to_owned(),
                     location: ident.location,
                     severity: MessageSeverity::WARNING,
                 });
@@ -2059,7 +2058,7 @@ impl CodeGenerator {
                     self.push_asm(ASM::LOAD(result)); // result := result + r;
                     self.push_asm(ASM::ADD(r)); // result := result + r;
                     self.push_asm(ASM::STORE(result)); // result := result + r;
-                                                       // ENDFI
+                                                       // ENDIF
 
                     self.push_asm(ASM::LOAD(r));
                     self.push_asm(ASM::ADD(r));
@@ -2211,7 +2210,7 @@ impl CodeGenerator {
         }
     }
 
-    fn genearate_command(&mut self, command: &Command) {
+    fn generate_command(&mut self, command: &Command) {
         match command {
             Command::Assignment {
                 identifier: _,
@@ -2232,7 +2231,7 @@ impl CodeGenerator {
                 self.push_asm(jump_instruction);
                 let then_start = self.assembly_code.len() as i64;
                 for cmd in then_commands {
-                    self.genearate_command(cmd);
+                    self.generate_command(cmd);
                 }
                 let then_end = self.assembly_code.len() as i64;
 
@@ -2265,14 +2264,14 @@ impl CodeGenerator {
                 self.push_asm(jump_instruction);
                 let then_start = self.assembly_code.len() as i64;
                 for cmd in then_commands {
-                    self.genearate_command(cmd);
+                    self.generate_command(cmd);
                 }
                 self.push_asm(ASM::JUMP(0));
                 let then_end = self.assembly_code.len() as i64;
 
                 let else_start = self.assembly_code.len() as i64;
                 for cmd in else_commands {
-                    self.genearate_command(cmd);
+                    self.generate_command(cmd);
                 }
                 let else_end = self.assembly_code.len() as i64;
 
@@ -2323,7 +2322,7 @@ impl CodeGenerator {
                 let after_condition = self.assembly_code.len() as i64;
 
                 for cmd in commands {
-                    self.genearate_command(cmd);
+                    self.generate_command(cmd);
                 }
 
                 let loop_end = self.assembly_code.len() as i64;
@@ -2358,7 +2357,7 @@ impl CodeGenerator {
                 let loop_start = self.assembly_code.len() as i64;
 
                 for cmd in commands {
-                    self.genearate_command(cmd);
+                    self.generate_command(cmd);
                 }
 
                 let jump_instruction;
@@ -2500,7 +2499,7 @@ impl CodeGenerator {
                         self.push_asm(jump_instruction);
 
                         for cmd in commands {
-                            self.genearate_command(cmd);
+                            self.generate_command(cmd);
                         }
 
                         self.push_asm(ASM::LOAD(for_iter_loc));
@@ -2528,7 +2527,7 @@ impl CodeGenerator {
                         self.push_asm(jump_instruction);
 
                         for cmd in commands {
-                            self.genearate_command(cmd);
+                            self.generate_command(cmd);
                         }
 
                         self.push_asm(ASM::LOAD(for_iter_loc));
@@ -2602,7 +2601,7 @@ impl CodeGenerator {
         );
 
         for command in &procedure.commands {
-            self.genearate_command(command);
+            self.generate_command(command);
         }
 
         self.push_asm(ASM::RTRN(return_address_location));
@@ -2614,7 +2613,7 @@ impl CodeGenerator {
         if recursive_calls.len() > 0 {
             self.messages.push(ErrorDetails {
                 message: format!(
-                    "Recrusive calls are not allowed {} : {}",
+                    "recursive calls are not allowed {} : {}",
                     recursive_calls[0].procedure_name,
                     recursive_calls[0].recursive_path.join(" <- ")
                 ),
@@ -2669,7 +2668,7 @@ impl CodeGenerator {
         }
 
         for command in &ast.main_block.commands {
-            self.genearate_command(command);
+            self.generate_command(command);
         }
 
         
