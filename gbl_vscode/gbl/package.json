@@ -2,7 +2,7 @@
     "name": "gbl",
     "displayName": "gbl",
     "description": "gbl programming language support",
-    "version": "0.0.3",
+    "version": "0.0.5",
     "publisher": "imno",
     "engines": {
         "vscode": "^1.95.0"
@@ -19,9 +19,14 @@
                     "gbl"
                 ],
                 "extensions": [
-                    ".gbl .imp"
+                    ".gbl",
+                    ".imp"
                 ],
-                "configuration": "./language-configuration.json"
+                "configuration": "./language-configuration.json",
+                "icon": {
+                    "dark": "./images/gbl.svg",
+                    "light": "./images/gbl.svg"
+                }
             }
         ],
         "grammars": [
@@ -31,15 +36,14 @@
                 "path": "./syntaxes/gbl.tmLanguage.json"
             }
         ],
-        "iconThemes": [
+        "snippets": [
             {
-                "id": "gbl-icons",
-                "label": "gbl Icons",
-                "path": "./icon-theme.json"
+                "language": "gbl",
+                "path": "./snippets/gbl.json"
             }
         ]
     },
-    "dependencies": {
+    "devDependencies": {
         "vsce": "^2.15.0"
     }
 }
