@@ -2,7 +2,10 @@ use std::{collections::HashMap, fs::File, io::Write};
 
 use serde::Serialize;
 
-use crate::{asm::AbstractASM, Ast, Command, Condition, Either, ErrorDetails, Expression, ForDirection, Identifier, MessageSeverity, Procedure, Value };
+use crate::{
+    asm::AbstractASM, Ast, Command, Condition, Either, ErrorDetails, Expression, ForDirection,
+    Identifier, MessageSeverity, Procedure, Value,
+};
 
 #[derive(Debug, Clone, Serialize)]
 struct SymbolLocation {
@@ -29,7 +32,6 @@ pub struct CodeGenerator {
     last_mem_slot: usize,
     current_scope: String,
 }
-
 
 impl CodeGenerator {
     pub fn new() -> Self {

@@ -1,3 +1,3 @@
 # gbl README
 
-Gembalalang support in vscode. 
+Gebalalang support in vscode. 

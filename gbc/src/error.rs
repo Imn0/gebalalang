@@ -105,15 +105,21 @@ impl<'a> SourceContext<'a> {
 
             write!(stderr, "{}", error.severity.color_code())?;
 
-            if error.location.1.column > error.location.0.column {
-                for _ in error.location.0.column + 1..error.location.1.column {
+            if error.location.1.column >= error.location.0.column {
+                let end;
+                if error.location.0.column == error.location.1.column {
+                    end = error.location.1.column + 1;
+                } else {
+                    end = error.location.1.column;
+                }
+                for _ in error.location.0.column..end {
                     write!(stderr, "^")?;
                 }
             }
 
             writeln!(stderr)?;
         }
-
+        write!(stderr, "\x1b[0m")?;
         Ok(())
     }
 }

@@ -2,7 +2,7 @@
     "name": "gbl",
     "displayName": "gbl",
     "description": "gbl programming language support",
-    "version": "0.0.5",
+    "version": "0.0.6",
     "publisher": "imno",
     "engines": {
         "vscode": "^1.95.0"
@@ -15,7 +15,7 @@
             {
                 "id": "gbl",
                 "aliases": [
-                    "gembalalang",
+                    "gebalalang",
                     "gbl"
                 ],
                 "extensions": [
