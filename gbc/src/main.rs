@@ -1,5 +1,6 @@
 use clap::Parser;
 use serde::Serialize;
+use targets::gvm::{GvmAsm, GvmTarget};
 use std::fs::File;
 use std::io::Write;
 use std::{collections::HashMap, fs, vec};
@@ -16,11 +17,14 @@ mod ast_validate;
 mod error;
 use error::*;
 
-mod asm;
-use asm::AbstractASM;
+mod ir;
+use ir::IR;
 
 mod code_builder;
 use code_builder::code_builder::CodeGenerator;
+
+mod targets;
+
 
 fn main() -> std::io::Result<()> {
     let args = CliArgs::parse();
@@ -73,7 +77,7 @@ fn main() -> std::io::Result<()> {
         std::process::exit(1);
     }
 
-    let asm: Vec<AbstractASM> = code_asm.assembly_code.clone();
+    let asm: Vec<GvmAsm> = code_asm.to_gvm();
 
     let mut output = String::new();
 

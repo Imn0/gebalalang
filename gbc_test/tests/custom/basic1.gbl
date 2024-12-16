@@ -1,10 +1,17 @@
-#pragma test in(12) out(12, 12)
-#pragma test in(1) out(1, 1)
+#pragma test in(12, 32) out(12, 32)
+#pragma test in(24934, 132321) out(24934, 132321)
+
+PROCEDURE test(a) IS
+b
+BEGIN
+    READ b;
+    WRITE a;
+    WRITE b;
+END
 
 PROGRAM IS 
     a
 BEGIN
     READ a;
-    WRITE a;
-    WRITE a;
+    test(a);
 END

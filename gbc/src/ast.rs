@@ -5,7 +5,7 @@ use crate::{ErrorDetails, MessageSeverity};
 #[derive(Debug, Clone)]
 pub struct Ast {
     pub procedures: Vec<Procedure>,
-    pub main_block: Block,
+    pub main_block: MainBlock,
     pub location: (tree_sitter::Point, tree_sitter::Point),
 }
 
@@ -19,7 +19,7 @@ pub struct Procedure {
 }
 
 #[derive(Debug, Clone)]
-pub struct Block {
+pub struct MainBlock {
     pub declarations: Vec<Declaration>,
     pub commands: Vec<Command>,
     pub location: (tree_sitter::Point, tree_sitter::Point),
@@ -267,7 +267,7 @@ impl<'a> AstBuilder<'a> {
         })
     }
 
-    fn build_main_block(&self, node: &tree_sitter::Node) -> Block {
+    fn build_main_block(&self, node: &tree_sitter::Node) -> MainBlock {
         let start = node.start_position();
         let end = node.end_position();
         let location = (start, end);
@@ -288,7 +288,7 @@ impl<'a> AstBuilder<'a> {
             }
         }
 
-        Block {
+        MainBlock {
             declarations,
             commands,
             location,
