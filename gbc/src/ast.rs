@@ -1,5 +1,7 @@
 use std::ops::Not;
 
+use crate::{ErrorDetails, MessageSeverity};
+
 #[derive(Debug, Clone)]
 pub struct Ast {
     pub procedures: Vec<Procedure>,
@@ -152,7 +154,7 @@ impl<'a> AstBuilder<'a> {
         Self { source_code }
     }
 
-    pub fn build_ast(&self, tree: &tree_sitter::Tree) -> Ast {
+    pub fn build_ast(&self, tree: &tree_sitter::Tree) -> Either<Ast, ErrorDetails> {
         let root_node = tree.root_node();
         let start = root_node.start_position();
         let end = root_node.end_position();
@@ -174,11 +176,30 @@ impl<'a> AstBuilder<'a> {
             }
         }
 
-        Ast {
+
+
+        let ast = Ast {
             procedures,
             main_block: main_block.expect("Main block not found"),
             location: (start, end),
+        };
+
+        let rec_calls = ast.detect_recursive_calls();
+        if rec_calls.len() > 0 {
+            return Either::Right(ErrorDetails {
+                message: format!(
+                    "recursive calls are not allowed {} : {}",
+                    rec_calls[0].procedure_name,
+                    rec_calls[0].recursive_path.join(" <- ")
+                ),
+                location: rec_calls[0]
+                    .location
+                    .unwrap_or((tree_sitter::Point::default(), tree_sitter::Point::default())),
+                severity: MessageSeverity::ERROR,
+            })
         }
+
+        return Either::Left(ast);
     }
 
     fn parse_procedure(&self, node: &tree_sitter::Node) -> Result<Procedure, String> {

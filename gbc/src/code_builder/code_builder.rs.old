@@ -7,6 +7,8 @@ use crate::{
     Identifier, MessageSeverity, Procedure, Value,
 };
 
+
+
 #[derive(Debug, Clone, Serialize)]
 struct SymbolLocation {
     memory: usize,
@@ -1347,22 +1349,7 @@ impl CodeGenerator {
     }
 
     pub fn generate_asm(&mut self, ast: Ast) {
-        let recursive_calls = ast.detect_recursive_calls();
-        if recursive_calls.len() > 0 {
-            self.messages.push(ErrorDetails {
-                message: format!(
-                    "recursive calls are not allowed {} : {}",
-                    recursive_calls[0].procedure_name,
-                    recursive_calls[0].recursive_path.join(" <- ")
-                ),
-                location: recursive_calls[0]
-                    .location
-                    .unwrap_or((tree_sitter::Point::default(), tree_sitter::Point::default())),
-                severity: MessageSeverity::ERROR,
-            });
-            return;
-        }
-
+        
         if ast.procedures.len() > 0 {
             self.push_asm(AbstractASM::JUMP(0));
         }
@@ -1412,10 +1399,4 @@ impl CodeGenerator {
         self.push_asm(AbstractASM::HALT);
     }
 
-    fn save_dbg_info(&self, filename: &str) -> std::io::Result<()> {
-        let json = serde_json::to_string_pretty(&self.symbols)?;
-        let mut file = File::create(filename)?;
-        file.write_all(json.as_bytes())?;
-        Ok(())
-    }
 }

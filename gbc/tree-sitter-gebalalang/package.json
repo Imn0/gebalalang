@@ -1,0 +1,14 @@
+{
+  "name": "tree-sitter-gebalalang",
+  "version": "1.0.0",
+  "description": "",
+  "main": "grammar.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "tree-sitter-cli": "^0.24.5"
+  }
+}

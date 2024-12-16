@@ -20,7 +20,7 @@ mod asm;
 use asm::AbstractASM;
 
 mod code_builder;
-use code_builder::CodeGenerator;
+use code_builder::code_builder::CodeGenerator;
 
 fn main() -> std::io::Result<()> {
     let args = CliArgs::parse();
@@ -49,11 +49,14 @@ fn main() -> std::io::Result<()> {
         std::process::exit(1);
     }
 
-    let ast = ast_builder.build_ast(&tree);
-    // print!("{:#?}", ast);
-    let optimized_ast = optimize_ast(ast);
     let mut code_asm = CodeGenerator::new();
-    code_asm.generate_asm(optimized_ast);
+    let mut context = SourceContext::new(code.as_str(), &input_file);
+    if let Either::Left(ast) = ast_builder.build_ast(&tree) {
+        code_asm.generate_asm(ast);
+    } else if let Either::Right(error) = ast_builder.build_ast(&tree) {
+        context.add_message(error);        
+    }
+
 
     let is_error: bool = code_asm
         .messages
@@ -63,7 +66,6 @@ fn main() -> std::io::Result<()> {
         .len()
         > 0;
 
-    let mut context = SourceContext::new(code.as_str(), &input_file);
     context.add_messages(code_asm.messages.clone());
     context.display()?;
 
@@ -132,8 +134,4 @@ fn count_node_depth(node: tree_sitter::Node) -> usize {
     }
 
     depth
-}
-
-fn optimize_ast(ast: Ast) -> Ast {
-    ast
 }
