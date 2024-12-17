@@ -76,7 +76,13 @@ fn main() -> std::io::Result<()> {
     if is_error {
         std::process::exit(1);
     }
+    let mut ir_output = String::new();
 
+    for instruction in &code_asm.assembly_code {
+        ir_output += &format!("{}\n", instruction);
+    }
+    println!("{}", ir_output);
+    println!("\n");
     let asm: Vec<GvmAsm> = code_asm.to_gvm();
 
     let mut output = String::new();

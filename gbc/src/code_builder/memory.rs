@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, panic::Location};
 
 use clap::builder::Str;
 use serde::Serialize;
+use tree_sitter::Point;
 
 use crate::{ir::IR, Declaration, Either, ErrorDetails, Identifier, ProcArgument};
 
@@ -144,6 +145,23 @@ impl Memory {
             return Err(ErrorDetails {
                 message: format!("{} not declared in this scope", ident.name.clone()),
                 location: ident.location,
+                severity: crate::MessageSeverity::ERROR,
+            });
+        }
+    }
+
+    pub fn get_name_location(  &self,
+        name: &String,
+        scope: &String,
+        loc: (Point, Point)
+    ) -> Result<SymbolLocation, ErrorDetails> {
+        let scoped_name = get_scoped_name(name, scope);
+        if let Some(loc) = self.symbols.get(&scoped_name) {
+            return Ok(loc.clone());
+        } else {
+            return Err(ErrorDetails {
+                message: format!("{} not declared in this scope", name.clone()),
+                location: loc,
                 severity: crate::MessageSeverity::ERROR,
             });
         }
