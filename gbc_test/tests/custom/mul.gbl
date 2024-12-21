@@ -1,0 +1,35 @@
+#pragma test in(1234567890) out(2,1,3,2,5,1,3607,1,3803, 1)
+#pragma test in(12345678901) out(857, 1, 14405693, 1)
+#pragma test in(12345678903) out(3,1,4115226301,1)
+ PROCEDURE check (n,d,p) IS
+ r
+ BEGIN
+ p:=0;
+ r:=n%d;
+ WHILE r=0 DO
+ n:=n/d;
+ p:=p+1;
+ r:=n%d;
+ ENDWHILE
+ END
+
+ PROGRAM IS
+ n,m, potega , dzielnik
+ BEGIN
+ READ n;
+ dzielnik :=2;
+ m:= dzielnik * dzielnik ;
+ WHILE n>=m DO
+ check (n, dzielnik , potega );
+ IF potega >0 THEN # jest podzielna przez dzielnik
+ WRITE dzielnik ;
+ WRITE potega ;
+ ENDIF
+ dzielnik := dzielnik +1;
+ m:= dzielnik * dzielnik ;
+ ENDWHILE
+ IF n!=1 THEN # ostatni dzielnik różny od 1
+ WRITE n;
+ WRITE 1;
+ ENDIF
+ END

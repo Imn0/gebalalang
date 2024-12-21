@@ -190,6 +190,10 @@ class TestRunner:
             avg_cost = (avg_cost + current_cost) / (i + 1)
             avg_cost_wout_io = (avg_cost_wout_io + current_cost_wout_io) / (i + 1)
 
+            if len(output) != len(test_case.expected_output):
+                print(f"expected output of {name} is\n{test_case.expected_output}\nbut got\n{output} .")
+                return TestResult(name,False, 0, 0.0, 0.0)
+
             for i, o in enumerate(output):
                 if test_case.expected_output[i] != o:
                     print(f"expected output of {name} is\n{test_case.expected_output}\nbut got\n{output} .")
