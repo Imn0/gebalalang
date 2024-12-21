@@ -31,6 +31,7 @@ pub enum IR {
     jn(LabelIdx),
     jzp(LabelIdx),
     jzn(LabelIdx),
+    comment{cm: String}
 }
 
 impl fmt::Display for IR {
@@ -55,13 +56,14 @@ impl fmt::Display for IR {
                     IR::RTRN(val) => write!(f, "RTRN {}", val),
                     IR::HALT => write!(f, "HALT"),
                     IR::call { name } => write!(f, "call {}", name),
-                    IR::lbl_jump(val) => write!(f, "lbl_jumb .L{:?}", val),
-                    IR::jz(val) => write!(f, "jz .L{:?}", val),
-                    IR::jnz(val) => write!(f, "jnz .L{:?}", val),
-                    IR::jp(val) => write!(f, "jp .L{:?}", val),
-                    IR::jn(val) => write!(f, "jn .L{:?}", val),
-                    IR::jzp(val) => write!(f, "jzp .L{:?}", val),
-                    IR::jzn(val) => write!(f, "jzn .L{:?}", val),
+                    IR::lbl_jump(val) => write!(f, "lbl_jumb .L{}", val.0),
+                    IR::jz(val) => write!(f, "jz .L{}", val.0),
+                    IR::jnz(val) => write!(f, "jnz .L{}", val.0),
+                    IR::jp(val) => write!(f, "jp .L{}", val.0),
+                    IR::jn(val) => write!(f, "jn .L{}", val.0),
+                    IR::jzp(val) => write!(f, "jzp .L{}", val.0),
+                    IR::jzn(val) => write!(f, "jzn .L{}", val.0),
+                    IR::comment { cm } => write!(f, "{}", cm),
                     _ => Ok(()),
                 }
             }

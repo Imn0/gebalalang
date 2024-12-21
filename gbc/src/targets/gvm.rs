@@ -176,7 +176,7 @@ impl From<IR> for GvmAsm {
             IR::call { name } => {
                 panic!("Cannot convert IR::CALL (name: {}) to GvmAsm", name)
             }
-
+            IR::comment { cm } => GvmAsm::COMMENT { msg: cm },
             _ => {
                 panic!("Cannot convert IR {} to GvmAsm", ir);
             }
@@ -190,7 +190,6 @@ pub trait GvmTarget {
 
 trait IrGvmImpl {
     fn get_true_len_between(&self, start: usize, stop: usize) -> usize;
-    fn get_true_len(&self, to: usize) -> usize;
     fn distance_to_label(&self, from: usize, label_idx: usize) -> i64;
 }
 
@@ -206,14 +205,14 @@ impl GvmTarget for CodeGenerator {
 
                     let jump_dist = self.distance_to_label(i, proc_info.label);
 
-                    let return_place = self.get_true_len(i) + 3;
+                    let return_place = self.get_true_len_between(0,i) + 3;
                     asm_code.push(GvmAsm::SET(return_place as i64));
                     asm_code.push(GvmAsm::STORE(proc_info.return_address));
                     asm_code.push(GvmAsm::JUMP(jump_dist - 2));
                 }
                 IR::LABEL { idx, name } => {
                     asm_code.push(GvmAsm::COMMENT {
-                        msg: format!(".L{:?}", idx),
+                        msg: format!(".L{} #{}", idx.0, name),
                     });
                 }
                 IR::lbl_jump(idx) => {
@@ -305,21 +304,6 @@ impl IrGvmImpl for CodeGenerator {
         unreachable!("CANNOT CALCULATE DISTANCE TO ITSELF")
     }
 
-    fn get_true_len(&self, to: usize) -> usize {
-        let mut len = 0;
-        for i in 0..to {
-            match self.assembly_code.get(i).unwrap() {
-                IR::call { name: _ } => {
-                    len += 3;
-                }
-                IR::LABEL { idx: _, name: _ } => {}
-                _ => {
-                    len += 1;
-                }
-            }
-        }
-        return len;
-    }
 
     fn get_true_len_between(&self, start: usize, stop: usize) -> usize {
         let mut len = 0;
@@ -329,6 +313,7 @@ impl IrGvmImpl for CodeGenerator {
                     len += 3;
                 }
                 IR::LABEL { idx: _, name: _ } => {}
+                IR::comment { cm: _ } => {}
                 IR::jz(_) => {
                     len += 1;
                 }

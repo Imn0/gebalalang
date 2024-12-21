@@ -38,7 +38,7 @@ fn main() -> std::io::Result<()> {
     let code =
         fs::read_to_string(input_file.clone()).expect("Should have been able to read the file");
 
-    let ast_builder = AstBuilder::new(&code);
+    let mut ast_builder = AstBuilder::new(&code);
     let tree = parser
         .parse(&code, None)
         .expect("Failed to parse source code");

@@ -13,8 +13,8 @@ BEGIN
     FOR j FROM 2 TO n DO
         k := j - 1;
         l := k - 1;
-	i[j] := i[k] + 1;
-	f[j] := f[k] + f[l];
+    	i[j] := i[k] + 1;
+	    f[j] := f[k] + f[l];
         s[j] := s[k] * i[j];
     ENDFOR
     WRITE s[n];

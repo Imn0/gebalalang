@@ -1,12 +1,13 @@
-use std::{collections::HashMap, fs::File, panic::Location};
+use std::{collections::HashMap, fmt::format, fs::File, panic::Location};
 
 use clap::builder::Str;
 use serde::Serialize;
 use tree_sitter::{ffi::wasm_engine_t, Point};
 
 use crate::{
-    ir::LabelIdx, ir::IR, main, Ast, Command, Condition, Declaration, Either, ErrorDetails,
-    Expression, ForDirection, Identifier, MainBlock, MessageSeverity, Procedure, Value,
+    ir::{LabelIdx, IR},
+    main, Ast, Command, Condition, Declaration, Either, ErrorDetails, Expression, ForDirection,
+    Identifier, MainBlock, MessageSeverity, ProcArgument, Procedure, Value,
 };
 
 use super::memory::{Memory, SymbolLocation};
@@ -49,13 +50,34 @@ impl CodeGenerator {
     }
 
     pub fn generate_asm(&mut self, ast: Ast) {
-        if ast.procedures.len() > 0 {
-            let main_lbl = self.next_label;
+        let mut main_jump = false;
+
+        if ast.flags.has_div || ast.flags.has_mod || ast.flags.has_mul || ast.procedures.len() > 0 {
+            main_jump = true;
+        }
+
+        let mut main_lbl = 0;
+        if main_jump {
+            main_lbl = self.next_label;
             self.next_label += 1;
             self.push_asm(IR::lbl_jump(LabelIdx(main_lbl)));
+        }
+
+        if ast.flags.has_mul {
+            self.compile_mul_procedure();
+        }
+
+        if ast.flags.has_div || ast.flags.has_mod {
+            self.compile_mod_div_procedure();
+        }
+
+        if ast.procedures.len() > 0 {
             for proc in &ast.procedures {
                 self.compile_procedure(proc);
             }
+        }
+
+        if main_jump {
             self.push_asm(IR::LABEL {
                 idx: LabelIdx(main_lbl),
                 name: format!("MAIN"),
@@ -69,6 +91,8 @@ impl CodeGenerator {
 
         cc.extend(self.assembly_code.clone());
         self.assembly_code = cc;
+
+        println!("{:#?}", self.memory)
     }
 
     fn compile_main(&mut self, main: &MainBlock) {
@@ -241,9 +265,7 @@ impl CodeGenerator {
                         location: *location,
                     },
                     &self.current_scope,
-                    self.last_mem_slot,
                 );
-                self.last_mem_slot -= 1;
 
                 let for_iter_loc;
                 if let Err(e) = for_iter_maybe {
@@ -258,8 +280,18 @@ impl CodeGenerator {
                 let for_loop_start = LabelIdx(self.next_label);
                 self.next_label += 1;
 
-                let for_num_iters = self.last_mem_slot;
-                self.last_mem_slot -= 1;
+                let for_num_iters = self.memory.allocate_for_iter(
+                    &Declaration {
+                        name: format!("{}::cnt", variable),
+                        array_size: None,
+                        location: *location,
+                    },
+                    &self.current_scope,
+                ).unwrap().memory_address;
+
+                
+                
+                
 
                 self.ensure_constant(1);
 
@@ -269,12 +301,11 @@ impl CodeGenerator {
                 self.generate_value_in_acc(to);
                 self.push_asm(IR::STORE(for_num_iters));
 
+                self.push_asm(IR::LOAD(for_iter_loc));
                 self.push_asm(IR::LABEL {
                     idx: for_loop_start.clone(),
                     name: format!(""),
                 });
-
-                self.push_asm(IR::LOAD(for_iter_loc));
                 self.push_asm(IR::SUB(for_num_iters));
                 match direction {
                     ForDirection::Ascending => {
@@ -453,6 +484,7 @@ impl CodeGenerator {
                 let src_loc = self.generate_value(value);
                 self.compile_store_location_to_identifier(src_loc, target_identifier);
             }
+
             Expression::Addition(left, right) => {
                 let left_loc = self.generate_value_loc_not_in_acc(left, self.last_mem_slot);
                 self.generate_value_in_acc(right);
@@ -496,7 +528,49 @@ impl CodeGenerator {
                 );
             }
             _ => {
-                unimplemented!()
+                let left;
+                let right;
+                let proc_name;
+
+                match expression {
+                    Expression::Multiplication(_left, _right) => {
+                        left = _left;
+                        right = _right;
+                        proc_name = format!("__BUILTIN_MUL");
+                    }
+                    Expression::Modulo(_left, _right) => {
+                        left = _left;
+                        right = _right;
+                        proc_name = format!("__BUILTIN_DIV_MOD");
+                    }
+                    Expression::Division(_left, _right) => {
+                        left = _left;
+                        right = _right;
+                        proc_name = format!("__BUILTIN_DIV_MOD");
+                    }
+                    _ => unreachable!(),
+                }
+                let op_proc = self.procedures.get(&proc_name).unwrap().clone();
+
+                self.generate_value_in_acc(left);
+                self.push_asm(IR::STORE(op_proc.args.get(0).unwrap().memory_address));
+
+                self.generate_value_in_acc(right);
+                self.push_asm(IR::STORE(op_proc.args.get(1).unwrap().memory_address));
+
+                let a;
+
+                match expression {
+                    Expression::Modulo(_left, _right) => {
+                        a = op_proc.args.get(3).unwrap().clone();
+                    }
+                    _ => {
+                        a = op_proc.args.get(2).unwrap().clone();
+                    }
+                }
+                self.push_asm(IR::call { name: proc_name });
+
+                self.compile_store_location_to_identifier(a, target_identifier);
             }
         }
     }
@@ -750,7 +824,6 @@ impl CodeGenerator {
     }
 
     pub fn ensure_constant(&mut self, constant: i64) -> SymbolLocation {
-
         if let Some(loc) = self.memory.get_constant(constant.clone()) {
             return loc;
         } else {
@@ -782,5 +855,370 @@ impl CodeGenerator {
 
     pub fn get_proc_info_for_name(&self, proc_name: &String) -> ProcedureInfo {
         self.procedures.get(proc_name).unwrap().clone()
+    }
+
+    fn compile_mul_procedure(&mut self) {
+        self.current_scope = format!("__BUILTIN_MUL");
+        let proc_lbl = self.push_label_name(&format!("__BUILTIN_MUL"));
+        let ret_addr = self
+            .memory
+            .allocate_procedure_return(&format!("__BUILTIN_MUL"));
+        let mut proc_info = ProcedureInfo {
+            return_address: ret_addr,
+            label: proc_lbl,
+            args: vec![],
+        };
+
+        let p_arg1 = self.memory.allocate_builtin_arg(
+            &ProcArgument {
+                name: "arg1".to_string(),
+                is_array: false,
+            },
+            &self.current_scope,
+        );
+
+        let p_arg2 = self.memory.allocate_builtin_arg(
+            &ProcArgument {
+                name: "arg2".to_string(),
+                is_array: false,
+            },
+            &self.current_scope,
+        );
+
+        let p_result = self.memory.allocate_builtin_arg(
+            &ProcArgument {
+                name: "rtn".to_string(),
+                is_array: false,
+            },
+            &self.current_scope,
+        );
+
+        proc_info
+            .args
+            .extend([p_arg1.clone(), p_arg2.clone(), p_result.clone()]);
+
+        let arg1 = p_arg1.memory_address;
+
+        let arg2 = p_arg2.memory_address;
+
+        let zero_loc = self.ensure_constant(0);
+
+        self.push_asm(IR::LOAD(zero_loc.memory_address));
+        self.push_asm(IR::STORE(p_result.memory_address));
+
+        self.push_asm(IR::LOAD(p_arg2.memory_address));
+
+        let loop_end_lbl = LabelIdx(self.next_label);
+        self.next_label += 1;
+        let loop_start_lbl = LabelIdx(self.next_label);
+        self.next_label += 1;
+
+        let skip_add = LabelIdx(self.next_label);
+        self.next_label += 1;
+
+        let sign_flag = self.last_mem_slot - 1;
+        let zero_loc = self.ensure_constant(0);
+        let m_one_loc = self.ensure_constant(-1);
+        let one_loc = self.ensure_constant(1);
+        let arg_1_pos = LabelIdx(self.next_label);
+        self.next_label += 1;
+        let arg_2_pos = LabelIdx(self.next_label);
+        self.next_label += 1;
+
+        self.push_asm(IR::LOAD(one_loc.memory_address));
+        self.push_asm(IR::STORE(sign_flag));
+
+        self.push_asm(IR::LOAD(arg1));
+        self.push_asm(IR::jp(arg_1_pos.clone()));
+
+        self.push_asm(IR::LOAD(m_one_loc.memory_address));
+        self.push_asm(IR::STORE(sign_flag));
+        self.push_asm(IR::LOAD(zero_loc.memory_address));
+        self.push_asm(IR::SUB(arg1));
+        self.push_asm(IR::STORE(arg1));
+
+        self.push_asm(IR::LABEL {
+            idx: arg_1_pos,
+            name: format!(""),
+        });
+
+        self.push_asm(IR::LOAD(arg2));
+        self.push_asm(IR::jp(arg_2_pos.clone()));
+
+        self.push_asm(IR::LOAD(zero_loc.memory_address));
+        self.push_asm(IR::SUB(sign_flag));
+        self.push_asm(IR::STORE(sign_flag));
+        self.push_asm(IR::LOAD(zero_loc.memory_address));
+        self.push_asm(IR::SUB(arg2));
+        self.push_asm(IR::STORE(arg2));
+
+        self.push_asm(IR::LABEL {
+            idx: arg_2_pos,
+            name: format!(""),
+        });
+
+        self.push_asm(IR::LOAD(p_arg1.memory_address));
+
+        self.push_asm(IR::LABEL {
+            idx: loop_start_lbl.clone(),
+            name: format!(""),
+        });
+        self.push_asm(IR::jz(loop_end_lbl.clone()));
+
+        self.push_asm(IR::HALF);
+        self.push_asm(IR::ADD(0));
+        self.push_asm(IR::SUB(arg1));
+
+        self.push_asm(IR::jz(skip_add.clone()));
+        self.push_asm(IR::LOAD(arg1));
+        self.push_asm(IR::LOAD(p_result.memory_address));
+        self.push_asm(IR::ADD(arg2));
+        self.push_asm(IR::STORE(p_result.memory_address));
+        self.push_asm(IR::LABEL {
+            idx: skip_add,
+            name: format!(""),
+        });
+
+        self.push_asm(IR::LOAD(arg2));
+        self.push_asm(IR::ADD(arg2));
+        self.push_asm(IR::STORE(arg2));
+
+        self.push_asm(IR::LOAD(arg1));
+        self.push_asm(IR::HALF);
+        self.push_asm(IR::STORE(arg1));
+
+        self.push_asm(IR::lbl_jump(loop_start_lbl));
+        self.push_asm(IR::LABEL {
+            idx: loop_end_lbl,
+            name: format!(""),
+        });
+
+        let is_pos = LabelIdx(self.next_label);
+        self.next_label += 1;
+
+        let skip = LabelIdx(self.next_label);
+        self.next_label += 1;
+
+        self.push_asm(IR::LOAD(sign_flag));
+        self.push_asm(IR::jp(is_pos.clone()));
+
+        self.push_asm(IR::LOAD(zero_loc.memory_address));
+        self.push_asm(IR::SUB(p_result.memory_address));
+        self.push_asm(IR::lbl_jump(skip.clone()));
+
+        self.push_asm(IR::LABEL {
+            idx: is_pos,
+            name: format!(""),
+        });
+        self.push_asm(IR::LOAD(p_result.memory_address));
+        self.push_asm(IR::LABEL {
+            idx: skip,
+            name: format!(""),
+        });
+        self.push_asm(IR::STORE(p_result.memory_address));
+
+        self.push_asm(IR::RTRN(ret_addr));
+        self.procedures.insert(format!("__BUILTIN_MUL"), proc_info);
+    }
+
+    fn compile_mod_div_procedure(&mut self) {
+        self.current_scope = format!("__BUILTIN_DIV_MOD");
+        let proc_lbl = self.push_label_name(&format!("__BUILTIN_DIV_MOD"));
+        let ret_addr = self
+            .memory
+            .allocate_procedure_return(&format!("__BUILTIN_DIV_MOD"));
+        let mut proc_info = ProcedureInfo {
+            return_address: ret_addr,
+            label: proc_lbl,
+            args: vec![],
+        };
+
+        let p_arg1 = self.memory.allocate_builtin_arg(
+            &ProcArgument {
+                name: "arg1".to_string(),
+                is_array: false,
+            },
+            &self.current_scope,
+        );
+
+        let p_arg2 = self.memory.allocate_builtin_arg(
+            &ProcArgument {
+                name: "arg2".to_string(),
+                is_array: false,
+            },
+            &self.current_scope,
+        );
+
+        let div_result = self.memory.allocate_builtin_arg(
+            &ProcArgument {
+                name: "dividend".to_string(),
+                is_array: false,
+            },
+            &self.current_scope,
+        );
+
+        let mod_result = self.memory.allocate_builtin_arg(
+            &ProcArgument {
+                name: "divisor".to_string(),
+                is_array: false,
+            },
+            &self.current_scope,
+        );
+
+        let arg1 = p_arg1.memory_address;
+
+        let arg2 = p_arg2.memory_address;
+
+        proc_info
+            .args
+            .extend([p_arg1, p_arg2, div_result.clone(), mod_result.clone()]);
+
+        // setup
+        let zero = self.ensure_constant(0).memory_address;
+        let m_one = self.ensure_constant(-1).memory_address;
+        let one = self.ensure_constant(1).memory_address;
+
+        let sign_flag = self.last_mem_slot;
+        let mod_final_sign = self.last_mem_slot - 1;
+
+        let quotient = self.last_mem_slot - 2;
+        let power_of_two = self.last_mem_slot - 3;
+
+        let arg_1_pos = LabelIdx(self.next_label);
+        self.next_label += 1;
+        let arg_2_pos = LabelIdx(self.next_label);
+        self.next_label += 1;
+
+        // if b == 0
+        self.push_asm(IR::LOAD(arg2));
+        self.push_asm(IR::jnz(LabelIdx(self.next_label)));
+        self.push_asm(IR::LOAD(zero));
+        self.push_asm(IR::STORE(div_result.memory_address));
+        self.push_asm(IR::STORE(mod_result.memory_address));
+        self.push_asm(IR::RTRN(ret_addr));
+        self.push_label();
+
+        // sign = 1, mod_sign = 1
+        self.push_asm(IR::LOAD(one));
+        self.push_asm(IR::STORE(sign_flag));
+        self.push_asm(IR::STORE(mod_final_sign));
+
+        // if arg1 < 0
+        self.push_asm(IR::LOAD(arg1));
+        self.push_asm(IR::jp(arg_1_pos.clone()));
+
+        self.push_asm(IR::LOAD(m_one));
+        self.push_asm(IR::STORE(sign_flag));
+        self.push_asm(IR::LOAD(zero));
+        self.push_asm(IR::SUB(arg1));
+        self.push_asm(IR::STORE(arg1));
+
+        self.push_asm(IR::LABEL {
+            idx: arg_1_pos,
+            name: format!(""),
+        });
+
+        // if arg2 < 0
+        self.push_asm(IR::LOAD(arg2));
+        self.push_asm(IR::jp(arg_2_pos.clone()));
+
+        self.push_asm(IR::LOAD(zero));
+        self.push_asm(IR::SUB(sign_flag));
+        self.push_asm(IR::STORE(sign_flag));
+
+        self.push_asm(IR::LOAD(zero));
+        self.push_asm(IR::SUB(mod_final_sign));
+        self.push_asm(IR::STORE(mod_final_sign));
+
+        self.push_asm(IR::LOAD(zero));
+        self.push_asm(IR::SUB(arg2));
+        self.push_asm(IR::STORE(arg2));
+
+        self.push_asm(IR::LABEL {
+            idx: arg_2_pos,
+            name: format!(""),
+        });
+
+        self.push_asm(IR::LOAD(zero));
+        self.push_asm(IR::STORE(quotient));
+
+        self.push_asm(IR::LOAD(one));
+        self.push_asm(IR::STORE(power_of_two));
+
+        /*
+        while arg2 - arg1 < 0:
+            arg2 += arg2
+            power_of_two += power_of_two
+        */
+        let loop1_start = self.push_label();
+        self.push_asm(IR::LOAD(arg2));
+        self.push_asm(IR::SUB(arg1));
+        self.push_asm(IR::jp(LabelIdx(self.next_label)));
+        self.push_asm(IR::LOAD(arg2));
+        self.push_asm(IR::ADD(arg2));
+        self.push_asm(IR::STORE(arg2));
+
+        self.push_asm(IR::LOAD(power_of_two));
+        self.push_asm(IR::ADD(power_of_two));
+        self.push_asm(IR::STORE(power_of_two));
+
+        self.push_asm(IR::lbl_jump(loop1_start));
+        self.push_label();
+
+        /*
+        while !power_of_two <= 0:
+            if arg1 - arg2 >= 0 :
+                arg1 -= arg2
+                quotient += power_of_two
+
+            arg2 = arg2 // 2
+            power_of_two = power_of_two // 2
+        */
+        let loop2_start = self.push_label();
+        let loop2_end = LabelIdx(self.next_label);
+        self.next_label += 1;
+
+        self.push_asm(IR::LOAD(power_of_two));
+        self.push_asm(IR::jzp(loop2_end.clone()));
+        self.push_asm(IR::comment {
+            cm: "fae".to_string(),
+        });
+
+        self.push_asm(IR::LOAD(arg1));
+        self.push_asm(IR::SUB(arg2));
+        self.push_asm(IR::jn(LabelIdx(self.next_label)));
+        self.push_asm(IR::LOAD(arg1));
+        self.push_asm(IR::SUB(arg2));
+        self.push_asm(IR::STORE(arg1));
+
+        self.push_asm(IR::LOAD(quotient));
+        self.push_asm(IR::ADD(power_of_two));
+        self.push_asm(IR::STORE(quotient));
+
+        self.push_label();
+
+        self.push_asm(IR::LOAD(arg2));
+        self.push_asm(IR::HALF);
+        self.push_asm(IR::STORE(arg2));
+
+        self.push_asm(IR::LOAD(power_of_two));
+        self.push_asm(IR::HALF);
+        self.push_asm(IR::STORE(power_of_two));
+
+        self.push_asm(IR::lbl_jump(loop2_start));
+        self.push_asm(IR::LABEL {
+            idx: loop2_end,
+            name: format!(""),
+        });
+
+        self.push_asm(IR::LOAD(quotient));
+        self.push_asm(IR::STORE(div_result.memory_address));
+
+        self.push_asm(IR::LOAD(arg1));
+        self.push_asm(IR::STORE(mod_result.memory_address));
+
+        self.push_asm(IR::RTRN(ret_addr));
+        self.procedures
+            .insert(format!("__BUILTIN_DIV_MOD"), proc_info);
     }
 }

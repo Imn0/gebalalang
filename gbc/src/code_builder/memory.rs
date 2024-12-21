@@ -137,7 +137,6 @@ impl Memory {
         &mut self,
         dec: &Declaration,
         scope: &String,
-        loc: usize,
     ) -> Result<SymbolLocation, ErrorDetails> {
         let scoped_name = get_scoped_name(&dec.name, scope);
 
@@ -149,7 +148,7 @@ impl Memory {
             });
         }
         let loc: SymbolLocation = SymbolLocation {
-            memory_address: loc,
+            memory_address: self.next_memory_slot,
             is_array: false,
             array_bounds: None,
             is_pointer: false,
@@ -161,10 +160,13 @@ impl Memory {
             scoped_name,
             loc.clone()
         );
+        self.next_memory_slot +=1;
         return Ok(loc);
     }
 
-    pub fn deallocate_for_iter(&mut self, dec: &Declaration, scope: &String) {}
+    pub fn deallocate_for_iter(&mut self, dec: &Declaration, scope: &String) {
+
+    }
 
     pub fn get_ident_base_location(
         &self,
@@ -233,6 +235,23 @@ impl Memory {
             is_array: arg.is_array,
             array_bounds: None,
             is_pointer: true,
+            read_only: false,
+            initialized: true,
+        };
+        self.symbols.insert(arg_scoped_name, symbol_loc.clone());
+        self.next_memory_slot += 1;
+        return symbol_loc;
+    }
+
+    pub fn allocate_builtin_arg(&mut self, arg: &ProcArgument, scope: &String) -> SymbolLocation {
+        let arg_scoped_name = get_scoped_name(&arg.name, scope);
+
+        // TODO ADD CHECK IF ITS ALREADY THERE
+        let symbol_loc = SymbolLocation {
+            memory_address: self.next_memory_slot,
+            is_array: arg.is_array,
+            array_bounds: None,
+            is_pointer: false,
             read_only: false,
             initialized: true,
         };

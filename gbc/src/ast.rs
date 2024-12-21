@@ -1,9 +1,17 @@
-use std::ops::Not;
+use std::{fmt, ops::Not};
 
 use crate::{ErrorDetails, MessageSeverity};
 
 #[derive(Debug, Clone)]
+pub struct AstFlags {
+    pub has_mul: bool,
+    pub has_div: bool,
+    pub has_mod: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct Ast {
+    pub flags: AstFlags,
     pub procedures: Vec<Procedure>,
     pub main_block: MainBlock,
     pub location: (tree_sitter::Point, tree_sitter::Point),
@@ -143,18 +151,25 @@ pub struct Declaration {
     pub location: (tree_sitter::Point, tree_sitter::Point),
 }
 
-
 // AST Builder
 pub struct AstBuilder<'a> {
     source_code: &'a str,
+    flags: AstFlags,
 }
 
 impl<'a> AstBuilder<'a> {
     pub fn new(source_code: &'a str) -> Self {
-        Self { source_code }
+        Self {
+            source_code,
+            flags: AstFlags {
+                has_mul: false,
+                has_div: false,
+                has_mod: false,
+            },
+        }
     }
 
-    pub fn build_ast(&self, tree: &tree_sitter::Tree) -> Either<Ast, ErrorDetails> {
+    pub fn build_ast(&mut self, tree: &tree_sitter::Tree) -> Either<Ast, ErrorDetails> {
         let root_node = tree.root_node();
         let start = root_node.start_position();
         let end = root_node.end_position();
@@ -176,9 +191,8 @@ impl<'a> AstBuilder<'a> {
             }
         }
 
-
-
         let ast = Ast {
+            flags: self.flags.clone(),
             procedures,
             main_block: main_block.expect("Main block not found"),
             location: (start, end),
@@ -196,13 +210,13 @@ impl<'a> AstBuilder<'a> {
                     .location
                     .unwrap_or((tree_sitter::Point::default(), tree_sitter::Point::default())),
                 severity: MessageSeverity::ERROR,
-            })
+            });
         }
 
         return Either::Left(ast);
     }
 
-    fn parse_procedure(&self, node: &tree_sitter::Node) -> Result<Procedure, String> {
+    fn parse_procedure(&mut self, node: &tree_sitter::Node) -> Result<Procedure, String> {
         let start = node.start_position();
         let end = node.end_position();
 
@@ -267,7 +281,7 @@ impl<'a> AstBuilder<'a> {
         })
     }
 
-    fn build_main_block(&self, node: &tree_sitter::Node) -> MainBlock {
+    fn build_main_block(&mut self, node: &tree_sitter::Node) -> MainBlock {
         let start = node.start_position();
         let end = node.end_position();
         let location = (start, end);
@@ -294,7 +308,7 @@ impl<'a> AstBuilder<'a> {
             location,
         }
     }
-    fn build_commands(&self, node: &tree_sitter::Node) -> Vec<Command> {
+    fn build_commands(&mut self, node: &tree_sitter::Node) -> Vec<Command> {
         let mut commands = Vec::new();
         for child in node.children(&mut node.walk()) {
             match child.kind() {
@@ -308,7 +322,7 @@ impl<'a> AstBuilder<'a> {
         commands
     }
 
-    fn parse_command(&self, node: &tree_sitter::Node) -> Result<Command, String> {
+    fn parse_command(&mut self, node: &tree_sitter::Node) -> Result<Command, String> {
         let start = node.start_position();
         let end = node.end_position();
         let location = (start, end);
@@ -475,7 +489,7 @@ impl<'a> AstBuilder<'a> {
         }
     }
 
-    fn parse_expression(&self, node: &tree_sitter::Node) -> Result<Expression, String> {
+    fn parse_expression(&mut self, node: &tree_sitter::Node) -> Result<Expression, String> {
         assert_eq!(node.kind(), "expression");
 
         let child = node.child(0).ok_or("Empty expression")?;
@@ -487,9 +501,18 @@ impl<'a> AstBuilder<'a> {
             match op.kind() {
                 "+" => Ok(Expression::Addition(first_val, second_val)),
                 "-" => Ok(Expression::Subtraction(first_val, second_val)),
-                "*" => Ok(Expression::Multiplication(first_val, second_val)),
-                "/" => Ok(Expression::Division(first_val, second_val)),
-                "%" => Ok(Expression::Modulo(first_val, second_val)),
+                "*" => {
+                    self.flags.has_mul = true;
+                    Ok(Expression::Multiplication(first_val, second_val))
+                }
+                "/" => {
+                    self.flags.has_div = true;
+                    Ok(Expression::Division(first_val, second_val))
+                }
+                "%" => {
+                    self.flags.has_mod = true;
+                    Ok(Expression::Modulo(first_val, second_val))
+                }
 
                 _ => {
                     return Err(format!("unsupported expression {}", op.kind()));
