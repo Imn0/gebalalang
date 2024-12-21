@@ -133,6 +133,39 @@ impl Memory {
         }
     }
 
+    pub fn allocate_for_iter(
+        &mut self,
+        dec: &Declaration,
+        scope: &String,
+        loc: usize,
+    ) -> Result<SymbolLocation, ErrorDetails> {
+        let scoped_name = get_scoped_name(&dec.name, scope);
+
+        if self.symbols.contains_key(&scoped_name) {
+            return Err(ErrorDetails {
+                message: format!("Variable {} already defined.", dec.name),
+                location: dec.location,
+                severity: crate::MessageSeverity::ERROR,
+            });
+        }
+        let loc: SymbolLocation = SymbolLocation {
+            memory_address: loc,
+            is_array: false,
+            array_bounds: None,
+            is_pointer: false,
+            read_only: true,
+            initialized: true,
+        };
+
+        self.symbols.insert(
+            scoped_name,
+            loc.clone()
+        );
+        return Ok(loc);
+    }
+
+    pub fn deallocate_for_iter(&mut self, dec: &Declaration, scope: &String) {}
+
     pub fn get_ident_base_location(
         &self,
         ident: &Identifier,
@@ -150,10 +183,11 @@ impl Memory {
         }
     }
 
-    pub fn get_name_location(  &self,
+    pub fn get_name_location(
+        &self,
         name: &String,
         scope: &String,
-        loc: (Point, Point)
+        loc: (Point, Point),
     ) -> Result<SymbolLocation, ErrorDetails> {
         let scoped_name = get_scoped_name(name, scope);
         if let Some(loc) = self.symbols.get(&scoped_name) {

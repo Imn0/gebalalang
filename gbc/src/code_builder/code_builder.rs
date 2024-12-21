@@ -5,8 +5,8 @@ use serde::Serialize;
 use tree_sitter::{ffi::wasm_engine_t, Point};
 
 use crate::{
-    ir::IR, main, Ast, Command, Condition, Declaration, Either, ErrorDetails, Expression,
-    ForDirection, Identifier, MainBlock, MessageSeverity, Procedure, Value,
+    ir::LabelIdx, ir::IR, main, Ast, Command, Condition, Declaration, Either, ErrorDetails,
+    Expression, ForDirection, Identifier, MainBlock, MessageSeverity, Procedure, Value,
 };
 
 use super::memory::{Memory, SymbolLocation};
@@ -18,10 +18,16 @@ pub struct ProcedureInfo {
     pub args: Vec<SymbolLocation>,
 }
 
+struct ConstInfo {
+    pub val: i64,
+    pub location: usize,
+}
+
 pub struct CodeGenerator {
     pub messages: Vec<ErrorDetails>,
     pub assembly_code: Vec<IR>,
     memory: Memory,
+    constants: Vec<ConstInfo>,
     procedures: HashMap<String, ProcedureInfo>,
     next_label: usize,
     last_mem_slot: usize,
@@ -32,6 +38,7 @@ impl CodeGenerator {
     pub fn new() -> Self {
         CodeGenerator {
             memory: Memory::new(),
+            constants: Vec::new(),
             procedures: HashMap::new(),
             last_mem_slot: 0x4000000000000000,
             assembly_code: Vec::new(),
@@ -45,12 +52,12 @@ impl CodeGenerator {
         if ast.procedures.len() > 0 {
             let main_lbl = self.next_label;
             self.next_label += 1;
-            self.push_asm(IR::lbl_jump(main_lbl));
+            self.push_asm(IR::lbl_jump(LabelIdx(main_lbl)));
             for proc in &ast.procedures {
                 self.compile_procedure(proc);
             }
             self.push_asm(IR::LABEL {
-                idx: main_lbl,
+                idx: LabelIdx(main_lbl),
                 name: format!("MAIN"),
             });
         }
@@ -58,7 +65,10 @@ impl CodeGenerator {
         self.compile_main(&ast.main_block);
         self.push_asm(IR::HALT);
 
-        println!("{:#?}", self.memory)
+        let mut cc = self.fill_in_constants();
+
+        cc.extend(self.assembly_code.clone());
+        self.assembly_code = cc;
     }
 
     fn compile_main(&mut self, main: &MainBlock) {
@@ -98,20 +108,20 @@ impl CodeGenerator {
         self.assembly_code.push(ins);
     }
 
-    fn push_label(&mut self) -> usize {
+    fn push_label(&mut self) -> LabelIdx {
         let lbl = self.next_label;
         self.push_asm(IR::LABEL {
-            idx: lbl,
+            idx: LabelIdx(lbl),
             name: "".to_owned(),
         });
         self.next_label += 1;
-        return lbl;
+        return LabelIdx(lbl);
     }
 
     fn push_label_name(&mut self, name: &String) -> usize {
         let lbl = self.next_label;
         self.push_asm(IR::LABEL {
-            idx: lbl,
+            idx: LabelIdx(lbl),
             name: name.clone(),
         });
         self.next_label += 1;
@@ -142,6 +152,167 @@ impl CodeGenerator {
                 location,
             } => {
                 self.compile_expression(identifier, expression, *location);
+            }
+            Command::If {
+                condition,
+                then_commands,
+                location,
+            } => {
+                let label_idx = LabelIdx(self.next_label);
+                self.next_label += 1;
+                self.compile_condition(condition, label_idx.clone());
+                self.compile_commands(then_commands);
+                self.push_asm(IR::LABEL {
+                    idx: label_idx,
+                    name: format!(""),
+                });
+            }
+            Command::IfElse {
+                condition,
+                then_commands,
+                else_commands,
+                location,
+            } => {
+                let cond_fail_lbl = LabelIdx(self.next_label);
+                self.next_label += 1;
+
+                let skip_else_cmds = LabelIdx(self.next_label);
+                self.next_label += 1;
+
+                self.compile_condition(condition, cond_fail_lbl.clone());
+                self.compile_commands(then_commands);
+                self.push_asm(IR::lbl_jump(skip_else_cmds.clone()));
+
+                self.push_asm(IR::LABEL {
+                    idx: cond_fail_lbl,
+                    name: format!(""),
+                });
+                self.compile_commands(else_commands);
+                self.push_asm(IR::LABEL {
+                    idx: skip_else_cmds,
+                    name: format!(""),
+                });
+            }
+            Command::While {
+                condition,
+                commands,
+                location,
+            } => {
+                let cond_start = LabelIdx(self.next_label);
+                self.next_label += 1;
+
+                let while_after = LabelIdx(self.next_label);
+                self.next_label += 1;
+                self.push_asm(IR::LABEL {
+                    idx: cond_start.clone(),
+                    name: format!(""),
+                });
+                self.compile_condition(condition, while_after.clone());
+
+                self.compile_commands(commands);
+                self.push_asm(IR::lbl_jump(cond_start));
+                self.push_asm(IR::LABEL {
+                    idx: while_after,
+                    name: format!(""),
+                });
+            }
+            Command::Repeat {
+                commands,
+                condition,
+                location,
+            } => {
+                let loop_start_lbl = self.push_label();
+
+                self.compile_commands(commands);
+                self.compile_condition(condition, loop_start_lbl);
+            }
+            Command::For {
+                variable,
+                from,
+                to,
+                direction,
+                commands,
+                location,
+            } => {
+                let for_iter_maybe = self.memory.allocate_for_iter(
+                    &Declaration {
+                        name: variable.to_string(),
+                        array_size: None,
+                        location: *location,
+                    },
+                    &self.current_scope,
+                    self.last_mem_slot,
+                );
+                self.last_mem_slot -= 1;
+
+                let for_iter_loc;
+                if let Err(e) = for_iter_maybe {
+                    self.add_message(e);
+                    return;
+                }
+                for_iter_loc = for_iter_maybe.unwrap().memory_address;
+
+                let for_exit_lbl = LabelIdx(self.next_label);
+                self.next_label += 1;
+
+                let for_loop_start = LabelIdx(self.next_label);
+                self.next_label += 1;
+
+                let for_num_iters = self.last_mem_slot;
+                self.last_mem_slot -= 1;
+
+                self.ensure_constant(1);
+
+                self.generate_value_in_acc(from);
+                self.push_asm(IR::STORE(for_iter_loc));
+
+                self.generate_value_in_acc(to);
+                self.push_asm(IR::STORE(for_num_iters));
+
+                self.push_asm(IR::LABEL {
+                    idx: for_loop_start.clone(),
+                    name: format!(""),
+                });
+
+                self.push_asm(IR::LOAD(for_iter_loc));
+                self.push_asm(IR::SUB(for_num_iters));
+                match direction {
+                    ForDirection::Ascending => {
+                        self.push_asm(IR::jp(for_exit_lbl.clone()));
+                    }
+                    ForDirection::Descending => {
+                        self.push_asm(IR::jn(for_exit_lbl.clone()));
+                    }
+                }
+
+                self.compile_commands(commands);
+
+                self.push_asm(IR::LOAD(for_iter_loc));
+                let one_loc = self.ensure_constant(1).memory_address;
+                match direction {
+                    ForDirection::Ascending => {
+                        self.push_asm(IR::ADD(one_loc));
+                    }
+                    ForDirection::Descending => {
+                        self.push_asm(IR::SUB(one_loc));
+                    }
+                }
+                self.push_asm(IR::STORE(for_iter_loc));
+                self.push_asm(IR::lbl_jump(for_loop_start));
+                self.push_asm(IR::LABEL {
+                    idx: for_exit_lbl,
+                    name: format!(""),
+                });
+
+                self.memory.deallocate_for_iter(
+                    &Declaration {
+                        name: variable.to_string(),
+                        array_size: None,
+                        location: *location,
+                    },
+                    &self.current_scope,
+                );
+                self.last_mem_slot += 2;
             }
             Command::Read(ident) => {
                 let sym_loc = self.generate_ident(ident);
@@ -207,8 +378,8 @@ impl CodeGenerator {
                                 self.push_asm(IR::LOAD(arg_mem_loc.memory_address));
                                 self.push_asm(IR::STORE(target_mem_loc.memory_address));
                             } else {
-                                let _l = self.push_asm(IR::SET(arg_mem_loc.memory_address as i64));
-                                self.push_asm(IR::LOAD(0));
+                                let loc = self.ensure_constant(arg_mem_loc.memory_address as i64);
+                                self.push_asm(IR::LOAD(loc.memory_address));
                                 self.push_asm(IR::STORE(target_mem_loc.memory_address));
                             }
                         }
@@ -218,9 +389,57 @@ impl CodeGenerator {
                         });
                     }
                 }
-            }
-            _ => unimplemented!(),
+            } // _ => unimplemented!(),
         }
+    }
+
+    fn compile_condition(&mut self, condition: &Condition, fail_label: LabelIdx) {
+        macro_rules! generate_and_subtract {
+            ($self:ident, $left:expr, $right:expr, $op_mem_2:expr) => {{
+                let left_loc = $self.generate_value_loc_not_in_acc($left, $op_mem_2);
+                $self.generate_value_in_acc($right);
+
+                if left_loc.is_pointer {
+                    $self.push_asm(IR::SUBI(left_loc.memory_address));
+                } else {
+                    $self.push_asm(IR::SUB(left_loc.memory_address));
+                }
+            }};
+        }
+
+        let op_mem_1 = self.last_mem_slot;
+        self.last_mem_slot -= 1;
+        let op_mem_2 = self.last_mem_slot;
+        self.last_mem_slot -= 1;
+
+        match condition {
+            Condition::NotEqual(left, right) => {
+                generate_and_subtract!(self, left, right, op_mem_1);
+                self.push_asm(IR::jz(fail_label));
+            }
+            Condition::Equal(left, right) => {
+                generate_and_subtract!(self, left, right, op_mem_1);
+                self.push_asm(IR::jnz(fail_label));
+            }
+            Condition::LessOrEqual(left, right) => {
+                generate_and_subtract!(self, left, right, op_mem_1);
+                self.push_asm(IR::jn(fail_label));
+            }
+            Condition::GreaterOrEqual(left, right) => {
+                generate_and_subtract!(self, left, right, op_mem_1);
+                self.push_asm(IR::jp(fail_label));
+            }
+            Condition::GreaterThan(left, right) => {
+                generate_and_subtract!(self, left, right, op_mem_1);
+                self.push_asm(IR::jzn(fail_label));
+            }
+            Condition::LessThan(left, right) => {
+                generate_and_subtract!(self, left, right, op_mem_1);
+                self.push_asm(IR::jzp(fail_label));
+            }
+        }
+
+        self.last_mem_slot += 2;
     }
 
     fn compile_expression(
@@ -234,15 +453,61 @@ impl CodeGenerator {
                 let src_loc = self.generate_value(value);
                 self.compile_store_location_to_identifier(src_loc, target_identifier);
             }
+            Expression::Addition(left, right) => {
+                let left_loc = self.generate_value_loc_not_in_acc(left, self.last_mem_slot);
+                self.generate_value_in_acc(right);
+                if left_loc.is_pointer {
+                    self.push_asm(IR::ADDI(left_loc.memory_address));
+                } else {
+                    self.push_asm(IR::ADD(left_loc.memory_address));
+                }
+
+                self.compile_store_location_to_identifier(
+                    SymbolLocation {
+                        memory_address: 0,
+                        is_array: false,
+                        array_bounds: None,
+                        is_pointer: false,
+                        read_only: true,
+                        initialized: true,
+                    },
+                    target_identifier,
+                );
+            }
+            Expression::Subtraction(left, right) => {
+                let right_loc = self.generate_value_loc_not_in_acc(right, self.last_mem_slot);
+                self.generate_value_in_acc(left);
+                if right_loc.is_pointer {
+                    self.push_asm(IR::SUBI(right_loc.memory_address));
+                } else {
+                    self.push_asm(IR::SUB(right_loc.memory_address));
+                }
+
+                self.compile_store_location_to_identifier(
+                    SymbolLocation {
+                        memory_address: 0,
+                        is_array: false,
+                        array_bounds: None,
+                        is_pointer: false,
+                        read_only: true,
+                        initialized: true,
+                    },
+                    target_identifier,
+                );
+            }
             _ => {
                 unimplemented!()
             }
         }
     }
 
-    fn compile_store_location_to_identifier(&mut self, mut what: SymbolLocation, to_where: &Identifier) {
+    fn compile_store_location_to_identifier(
+        &mut self,
+        mut what: SymbolLocation,
+        to_where: &Identifier,
+    ) {
         if let Some(target_loc) = self.generate_ident_no_extra_asm(to_where) {
-            if (what.memory_address != 0 || what.is_pointer) {
+            if what.memory_address != 0 || what.is_pointer {
                 self.compile_load_from_symbol(what);
             }
             self.compile_store_to_symbol(target_loc);
@@ -250,12 +515,12 @@ impl CodeGenerator {
         }
 
         self.last_mem_slot -= 2;
-        if (what.memory_address == 0) {
+        if what.memory_address == 0 {
             what.memory_address = self.last_mem_slot + 1;
             self.push_asm(IR::STORE(self.last_mem_slot + 1));
         }
         let mut target_loc = self.generate_ident(to_where);
-        if (target_loc.memory_address == 0) {
+        if target_loc.memory_address == 0 {
             target_loc.memory_address = self.last_mem_slot + 2;
             self.push_asm(IR::STORE(self.last_mem_slot + 2));
         }
@@ -265,10 +530,10 @@ impl CodeGenerator {
     }
 
     fn compile_load_from_symbol(&mut self, what: SymbolLocation) {
-        if (what.is_pointer) {
+        if what.is_pointer {
             self.push_asm(IR::LOADI(what.memory_address));
         } else {
-            if (what.memory_address == 0) {
+            if what.memory_address == 0 {
                 return;
             }
             self.push_asm(IR::LOAD(what.memory_address));
@@ -276,7 +541,7 @@ impl CodeGenerator {
     }
 
     fn compile_store_to_symbol(&mut self, to_where: SymbolLocation) {
-        if (to_where.is_pointer) {
+        if to_where.is_pointer {
             self.push_asm(IR::STOREI(to_where.memory_address));
         } else {
             self.push_asm(IR::STORE(to_where.memory_address));
@@ -428,6 +693,50 @@ impl CodeGenerator {
         }
     }
 
+    fn generate_value_loc_not_in_acc(
+        &mut self,
+        val: &Value,
+        mem_slot_to_use: usize,
+    ) -> SymbolLocation {
+        let mut loc;
+        match val {
+            Value::Number(num) => {
+                loc = self.ensure_constant(num.clone());
+            }
+            Value::Identifier(ident) => {
+                loc = self.generate_ident(ident);
+            }
+        }
+
+        if loc.memory_address == 0 {
+            self.push_asm(IR::STORE(mem_slot_to_use));
+            loc.memory_address = mem_slot_to_use;
+        }
+        return loc;
+    }
+
+    fn generate_value_in_acc(&mut self, val: &Value) {
+        let loc;
+        match val {
+            Value::Number(num) => {
+                loc = self.ensure_constant(num.clone());
+            }
+            Value::Identifier(ident) => {
+                loc = self.generate_ident(ident);
+            }
+        }
+
+        if loc.memory_address == 0 && loc.is_pointer {
+            self.push_asm(IR::LOADI(0));
+        }
+        if loc.memory_address != 0 {
+            match loc.is_pointer {
+                true => self.push_asm(IR::LOADI(loc.memory_address)),
+                false => self.push_asm(IR::LOAD(loc.memory_address)),
+            }
+        }
+    }
+
     /// Can overwrite acc
     fn generate_value(&mut self, val: &Value) -> SymbolLocation {
         match val {
@@ -441,32 +750,34 @@ impl CodeGenerator {
     }
 
     pub fn ensure_constant(&mut self, constant: i64) -> SymbolLocation {
-        self.push_asm(IR::SET(constant.clone()));
-        return SymbolLocation {
-            memory_address: 0,
-            is_array: false,
-            array_bounds: None,
-            is_pointer: false,
-            read_only: true,
-            initialized: true,
-        };
 
-        // if let Some(loc) = self.memory.get_constant(constant.clone()) {
-        //     return loc;
-        // } else {
-        //     let mem_loc = self.memory.allocate_constant(constant.clone());
-        //     self.push_asm(IR::SET(constant.clone()));
-        //     self.push_asm(IR::STORE(mem_loc));
+        if let Some(loc) = self.memory.get_constant(constant.clone()) {
+            return loc;
+        } else {
+            let mem_loc = self.memory.allocate_constant(constant.clone());
+            self.constants.push(ConstInfo {
+                val: constant,
+                location: mem_loc,
+            });
 
-        //     return SymbolLocation {
-        //         memory_address: mem_loc,
-        //         is_array: false,
-        //         array_bounds: None,
-        //         is_pointer: false,
-        //         read_only: true,
-        //         initialized: true,
-        //     };
-        // }
+            return SymbolLocation {
+                memory_address: mem_loc,
+                is_array: false,
+                array_bounds: None,
+                is_pointer: false,
+                read_only: true,
+                initialized: true,
+            };
+        }
+    }
+
+    fn fill_in_constants(&self) -> Vec<IR> {
+        let mut v = Vec::new();
+        for c in &self.constants {
+            v.push(IR::SET(c.val));
+            v.push(IR::STORE(c.location));
+        }
+        return v;
     }
 
     pub fn get_proc_info_for_name(&self, proc_name: &String) -> ProcedureInfo {

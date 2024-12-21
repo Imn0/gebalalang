@@ -1,6 +1,9 @@
 use std::fmt;
 
-use crate::{code_builder::code_builder::CodeGenerator, ir::IR};
+use crate::{
+    code_builder::code_builder::CodeGenerator,
+    ir::{self, IR},
+};
 
 #[derive(Clone)]
 /// Represents the set of assembly-like instructions for a virtual machine.
@@ -158,24 +161,24 @@ impl From<IR> for GvmAsm {
             IR::SUBI(i) => GvmAsm::SUBI(i),
             IR::SET(x) => GvmAsm::SET(x),
             IR::HALF => GvmAsm::HALF,
-            IR::JUMP(j) => GvmAsm::JUMP(j),
-            IR::JPOS(j) => GvmAsm::JPOS(j),
-            IR::JZERO(j) => GvmAsm::JZERO(j),
-            IR::JNEG(j) => GvmAsm::JNEG(j),
             IR::RTRN(i) => GvmAsm::RTRN(i),
             IR::HALT => GvmAsm::HALT,
 
             IR::lbl_jump(i) => {
-                panic!("Cannot convert IR::LBLJ (idx: {} to GvmAsm", i)
+                panic!("Cannot convert IR::LBLJ (idx: {:?} to GvmAsm", i)
             }
             IR::LABEL { idx, name } => {
                 panic!(
-                    "Cannot convert IR::LABEL (idx: {}, name: {}) to GvmAsm",
+                    "Cannot convert IR::LABEL (idx: {:?}, name: {}) to GvmAsm",
                     idx, name
                 )
             }
             IR::call { name } => {
                 panic!("Cannot convert IR::CALL (name: {}) to GvmAsm", name)
+            }
+
+            _ => {
+                panic!("Cannot convert IR {} to GvmAsm", ir);
             }
         }
     }
@@ -210,23 +213,61 @@ impl GvmTarget for CodeGenerator {
                 }
                 IR::LABEL { idx, name } => {
                     asm_code.push(GvmAsm::COMMENT {
-                        msg: format!(".L{}", idx),
+                        msg: format!(".L{:?}", idx),
                     });
                 }
-                               IR::lbl_jump(idx) => {
-                    let jump_dist = self.distance_to_label(i, idx.clone());
+                IR::lbl_jump(idx) => {
+                    let jump_dist = self.distance_to_label(i, idx.clone().0);
                     asm_code.push(GvmAsm::JUMP(jump_dist));
-                    asm_code.push(GvmAsm::COMMENT {
-                        msg: format!("jump .L{}", idx),
-                    });
                 }
+                IR::jz(idx) => {
+                    let jump_dist = self.distance_to_label(i, idx.clone().0);
+                    asm_code.push(GvmAsm::JZERO(jump_dist));
+                }
+                IR::jnz(idx) => {
+                    let jump_dist = self.distance_to_label(i, idx.clone().0);
+
+                    asm_code.push(GvmAsm::JZERO(2));
+                    if jump_dist < 0 {
+                        asm_code.push(GvmAsm::JUMP(jump_dist - 1));
+                    } else if jump_dist > 0 {
+                        asm_code.push(GvmAsm::JUMP(jump_dist - 1));
+                    }
+                }
+                IR::jp(idx) => {
+                    let jump_dist = self.distance_to_label(i, idx.clone().0);
+                    asm_code.push(GvmAsm::JPOS(jump_dist));
+                }
+                IR::jn(idx) => {
+                    let jump_dist = self.distance_to_label(i, idx.clone().0);
+                    asm_code.push(GvmAsm::JNEG(jump_dist));
+                }
+                IR::jzp(idx) => {
+                    let jump_dist = self.distance_to_label(i, idx.clone().0);
+
+                    asm_code.push(GvmAsm::JPOS(2));
+                    if jump_dist < 0 {
+                        asm_code.push(GvmAsm::JUMP(jump_dist - 1));
+                    } else if jump_dist > 0 {
+                        asm_code.push(GvmAsm::JUMP(jump_dist - 1));
+                    }
+                }
+                IR::jzn(idx) => {
+                    let jump_dist = self.distance_to_label(i, idx.clone().0);
+
+                    asm_code.push(GvmAsm::JNEG(2));
+                    if jump_dist < 0 {
+                        asm_code.push(GvmAsm::JUMP(jump_dist - 1));
+                    } else if jump_dist > 0 {
+                        asm_code.push(GvmAsm::JUMP(jump_dist - 1));
+                    }
+                }
+
                 _ => {
                     asm_code.push(GvmAsm::from(ir.clone()));
                 }
             }
         }
-
-        
 
         return asm_code;
     }
@@ -240,7 +281,7 @@ impl IrGvmImpl for CodeGenerator {
         for (i, ir) in self.assembly_code.iter().enumerate() {
             match ir {
                 IR::LABEL { idx, name: _ } => {
-                    if idx.clone() == label_code {
+                    if idx.clone().0 == label_code {
                         end = i;
                         initialized = true;
                         break;
@@ -254,7 +295,7 @@ impl IrGvmImpl for CodeGenerator {
         }
 
         if start < end {
-            return (self.get_true_len_between(start, end) as i64);
+            return self.get_true_len_between(start, end) as i64;
         }
 
         if start > end {
@@ -288,6 +329,24 @@ impl IrGvmImpl for CodeGenerator {
                     len += 3;
                 }
                 IR::LABEL { idx: _, name: _ } => {}
+                IR::jz(_) => {
+                    len += 1;
+                }
+                IR::jnz(_) => {
+                    len += 2;
+                }
+                IR::jp(_) => {
+                    len += 1;
+                }
+                IR::jn(_) => {
+                    len += 1;
+                }
+                IR::jzp(_) => {
+                    len += 2;
+                }
+                IR::jzn(_) => {
+                    len += 2;
+                }
                 _ => {
                     len += 1;
                 }

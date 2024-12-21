@@ -1,7 +1,12 @@
-use std::{fmt::{self, write}, usize};
+use std::{
+    fmt::{self, write},
+    usize,
+};
 
 #[derive(Clone, Debug)]
+pub struct LabelIdx(pub usize);
 
+#[derive(Clone, Debug)]
 pub enum IR {
     GET(usize),
     PUT(usize),
@@ -15,21 +20,23 @@ pub enum IR {
     SUBI(usize),
     SET(i64),
     HALF,
-    JUMP(i64),
-    JPOS(i64),
-    JZERO(i64),
-    JNEG(i64),
     RTRN(usize),
     HALT,
-    LABEL { idx: usize, name: String },
+    LABEL { idx: LabelIdx, name: String },
     call { name: String },
-    lbl_jump(usize),
+    lbl_jump(LabelIdx),
+    jz(LabelIdx),
+    jnz(LabelIdx),
+    jp(LabelIdx),
+    jn(LabelIdx),
+    jzp(LabelIdx),
+    jzn(LabelIdx),
 }
 
 impl fmt::Display for IR {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            IR::LABEL { idx, name } => write!(f, ".L{} #{}", idx, name),
+            IR::LABEL { idx, name } => write!(f, ".L{:?} #{}", idx, name),
             _ => {
                 write!(f, "    ");
                 match self {
@@ -45,14 +52,16 @@ impl fmt::Display for IR {
                     IR::SUBI(val) => write!(f, "SUBI {}", val),
                     IR::SET(val) => write!(f, "SET {}", val),
                     IR::HALF => write!(f, "HALF"),
-                    IR::JUMP(val) => write!(f, "JUMP {}", val),
-                    IR::JPOS(val) => write!(f, "JPOS {}", val),
-                    IR::JZERO(val) => write!(f, "JZERO {}", val),
-                    IR::JNEG(val) => write!(f, "JNEG {}", val),
                     IR::RTRN(val) => write!(f, "RTRN {}", val),
                     IR::HALT => write!(f, "HALT"),
                     IR::call { name } => write!(f, "call {}", name),
-                    IR::lbl_jump(val) => write!(f, "lbl_jumb .L{}", val),
+                    IR::lbl_jump(val) => write!(f, "lbl_jumb .L{:?}", val),
+                    IR::jz(val) => write!(f, "jz .L{:?}", val),
+                    IR::jnz(val) => write!(f, "jnz .L{:?}", val),
+                    IR::jp(val) => write!(f, "jp .L{:?}", val),
+                    IR::jn(val) => write!(f, "jn .L{:?}", val),
+                    IR::jzp(val) => write!(f, "jzp .L{:?}", val),
+                    IR::jzn(val) => write!(f, "jzn .L{:?}", val),
                     _ => Ok(()),
                 }
             }
