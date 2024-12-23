@@ -3,14 +3,17 @@
 
 module.exports = grammar({
   name: "gbl",
-  
+  word: $ => $.word_token,
+  extras: $ => [$._comment, /[\s\t\n]+/],
   rules: {
+
     program_all: $ => seq(repeat($.procedure), $.main),
 
     procedure: $ => seq('PROCEDURE', $.proc_head, 'IS', optional($.declarations), 'BEGIN', optional($.commands), 'END'),
 
     main: $ => seq('PROGRAM', 'IS', optional($.declarations) , 'BEGIN', optional($.commands), 'END'),
 
+    word: $ => $.word_token,
     commands: $ => repeat1($.command),
 
     command: $ => choice(
@@ -81,6 +84,7 @@ module.exports = grammar({
 
     _comment: $ => /#.*/, 
     // Tokens and primitives
+    word_token: $ => /[_A-Z]+/,
 
 
     // evil 
@@ -91,5 +95,4 @@ module.exports = grammar({
 
   },
 
-  extras: $ => [$._comment, /[ \t\r\n]+/],
 });
