@@ -24,6 +24,11 @@
     }
   },
   "bindings": {
-    "rust": true
+    "c": true,
+    "go": true,
+    "node": true,
+    "python": true,
+    "rust": true,
+    "swift": true
   }
 }

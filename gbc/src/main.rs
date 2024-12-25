@@ -1,8 +1,8 @@
 use clap::Parser;
 use serde::Serialize;
 use targets::gvm::{GvmAsm, GvmTarget};
-use std::fs::File;
-use std::io::Write;
+use std::fs::{File, OpenOptions};
+use std::io::{self, Write};
 use std::{collections::HashMap, fs, vec};
 use tree_sitter_gbl::LANGUAGE;
 
@@ -90,9 +90,25 @@ fn main() -> std::io::Result<()> {
     for instruction in &asm {
         output += &format!("{}\n", instruction);
     }
-    println!("{}", output);
-    let mut file = File::create(args.out.clone())?;
-    file.write_all(output.as_bytes())?;
+    write_to_file(&args.out, &output)
+}
+
+
+
+fn write_to_file(path: &str, content: &str) -> io::Result<()> {
+    if let Some(parent) = std::path::Path::new(path).parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let mut file = OpenOptions::new()
+        .create(true)       //
+        .write(true)        
+        .truncate(true)     
+        .open(path)?;
+
+    
+    file.write_all(content.as_bytes())?;
+
     Ok(())
 }
 

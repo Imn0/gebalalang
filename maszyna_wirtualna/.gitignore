@@ -1,5 +1,0 @@
-*.o
-lexer.cc
-maszyna-*
-parser.cc
-parser.hh

@@ -1,14 +1,50 @@
 {
-  "name": "tree-sitter-gebalalang",
-  "version": "1.0.0",
-  "description": "",
-  "main": "grammar.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "name": "tree-sitter-gbl",
+  "version": "0.1.0",
+  "description": "Gbl grammar for tree-sitter",
+  "repository": "https://github.com/tree-sitter/tree-sitter-gbl",
+  "license": "MIT",
+  "author": {
+    "name": "imno"
   },
-  "author": "",
-  "license": "ISC",
+  "main": "bindings/node",
+  "types": "bindings/node",
+  "keywords": [
+    "incremental",
+    "parsing",
+    "tree-sitter",
+    "gbl"
+  ],
+  "files": [
+    "grammar.js",
+    "tree-sitter.json",
+    "binding.gyp",
+    "prebuilds/**",
+    "bindings/node/*",
+    "queries/*",
+    "src/**",
+    "*.wasm"
+  ],
   "dependencies": {
-    "tree-sitter-cli": "^0.24.5"
+    "node-addon-api": "^8.2.1",
+    "node-gyp-build": "^4.8.2"
+  },
+  "devDependencies": {
+    "prebuildify": "^6.0.1",
+    "tree-sitter-cli": "^0.24.4"
+  },
+  "peerDependencies": {
+    "tree-sitter": "^0.21.1"
+  },
+  "peerDependenciesMeta": {
+    "tree-sitter": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "install": "node-gyp-build",
+    "prestart": "tree-sitter build --wasm",
+    "start": "tree-sitter playground",
+    "test": "node --test bindings/node/*_test.js"
   }
 }
