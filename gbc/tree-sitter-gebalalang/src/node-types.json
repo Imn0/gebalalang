@@ -2,287 +2,480 @@
   {
     "type": "args",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "pidentifier",
-          "named": true
-        }
-      ]
+    "fields": {
+      "argument": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "pidentifier",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
     "type": "args_decl",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "pidentifier",
-          "named": true
-        }
-      ]
+    "fields": {
+      "argument": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "T",
+            "named": false
+          },
+          {
+            "type": "pidentifier",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
     "type": "command",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "commands",
-          "named": true
-        },
-        {
-          "type": "condition",
-          "named": true
-        },
-        {
-          "type": "expression",
-          "named": true
-        },
-        {
-          "type": "identifier",
-          "named": true
-        },
-        {
-          "type": "pidentifier",
-          "named": true
-        },
-        {
-          "type": "proc_call",
-          "named": true
-        },
-        {
-          "type": "value",
-          "named": true
-        }
-      ]
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "commands",
+            "named": true
+          }
+        ]
+      },
+      "condition": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "condition",
+            "named": true
+          }
+        ]
+      },
+      "else_branch": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "commands",
+            "named": true
+          }
+        ]
+      },
+      "end": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      },
+      "expression": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      },
+      "procedure_call": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "proc_call",
+            "named": true
+          }
+        ]
+      },
+      "start": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      },
+      "target": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "then_branch": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "commands",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      },
+      "variable": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "pidentifier",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
     "type": "commands",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "command",
-          "named": true
-        }
-      ]
+    "fields": {
+      "command": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "command",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
     "type": "condition",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "value",
-          "named": true
-        }
-      ]
+    "fields": {
+      "left": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
     "type": "declaration",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "num",
-          "named": true
-        },
-        {
-          "type": "pidentifier",
-          "named": true
-        }
-      ]
+    "fields": {
+      "end": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "num",
+            "named": true
+          }
+        ]
+      },
+      "identifier": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pidentifier",
+            "named": true
+          }
+        ]
+      },
+      "start": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "num",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
     "type": "declarations",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "declaration",
-          "named": true
-        }
-      ]
+    "fields": {
+      "declaration": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "declaration",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
     "type": "expression",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "value",
-          "named": true
-        }
-      ]
+    "fields": {
+      "left": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
     "type": "identifier",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "num",
-          "named": true
-        },
-        {
-          "type": "pidentifier",
-          "named": true
-        }
-      ]
+    "fields": {
+      "index": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "num",
+            "named": true
+          },
+          {
+            "type": "pidentifier",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pidentifier",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
     "type": "main",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "commands",
-          "named": true
-        },
-        {
-          "type": "declarations",
-          "named": true
-        }
-      ]
+    "fields": {
+      "commands": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "commands",
+            "named": true
+          }
+        ]
+      },
+      "declarations": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "declarations",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
     "type": "proc_call",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "args",
-          "named": true
-        },
-        {
-          "type": "pidentifier",
-          "named": true
-        }
-      ]
+    "fields": {
+      "arguments": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "args",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pidentifier",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
     "type": "proc_head",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "args_decl",
-          "named": true
-        },
-        {
-          "type": "pidentifier",
-          "named": true
-        }
-      ]
+    "fields": {
+      "arguments": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "args_decl",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pidentifier",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
     "type": "procedure",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "commands",
-          "named": true
-        },
-        {
-          "type": "declarations",
-          "named": true
-        },
-        {
-          "type": "proc_head",
-          "named": true
-        }
-      ]
+    "fields": {
+      "commands": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "commands",
+            "named": true
+          }
+        ]
+      },
+      "declarations": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "declarations",
+            "named": true
+          }
+        ]
+      },
+      "header": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "proc_head",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
     "type": "program_all",
     "named": true,
     "root": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "main",
-          "named": true
-        },
-        {
-          "type": "procedure",
-          "named": true
-        }
-      ]
+    "fields": {
+      "main_program": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "main",
+            "named": true
+          }
+        ]
+      },
+      "procedures": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "procedure",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
     "type": "value",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "identifier",
-          "named": true
-        },
-        {
-          "type": "num",
-          "named": true
-        }
-      ]
+    "fields": {
+      "identifier": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "number": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "num",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {

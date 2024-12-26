@@ -6,93 +6,173 @@ module.exports = grammar({
   word: $ => $.word_token,
   extras: $ => [$._comment, /[\s\t\n]+/],
   rules: {
-
-    program_all: $ => seq(repeat($.procedure), $.main),
-
-    procedure: $ => seq('PROCEDURE', $.proc_head, 'IS', optional($.declarations), 'BEGIN', optional($.commands), 'END'),
-
-    main: $ => seq('PROGRAM', 'IS', optional($.declarations) , 'BEGIN', optional($.commands), 'END'),
-
-    word: $ => $.word_token,
-    commands: $ => repeat1($.command),
-
-    command: $ => choice(
-      seq($.identifier, ':=', $.expression, ';'),
-      seq('IF', $.condition, 'THEN', $.commands, 'ELSE', $.commands, 'ENDIF'),
-      seq('IF', $.condition, 'THEN', $.commands, 'ENDIF'),
-      seq('WHILE', $.condition, 'DO', $.commands, 'ENDWHILE'),
-      seq('REPEAT', $.commands, 'UNTIL', $.condition, ';'),
-      seq('FOR', $.pidentifier, 'FROM', $.value, 'TO', $.value, 'DO', $.commands, 'ENDFOR'),
-      seq('FOR', $.pidentifier, 'FROM', $.value, 'DOWNTO', $.value, 'DO', $.commands, 'ENDFOR'),
-      seq($.proc_call, ';'),
-      seq('READ', $.identifier, ';'),
-      seq('WRITE', $.value, ';')
+    program_all: $ => seq(
+      field('procedures', repeat($.procedure)),
+      field('main_program', $.main)
     ),
 
-    proc_head: $ => seq($.pidentifier, '(', optional($.args_decl), ')'),
+    procedure: $ => seq(
+      'PROCEDURE',
+      field('header', $.proc_head),
+      'IS',
+      optional(field('declarations', $.declarations)),
+      'BEGIN',
+      optional(field('commands', $.commands)),
+      'END'
+    ),
 
-    proc_call: $ => seq($.pidentifier, '(', optional($.args), ')'),
+    main: $ => seq(
+      'PROGRAM',
+      'IS',
+      optional(field('declarations', $.declarations)),
+      'BEGIN',
+      optional(field('commands', $.commands)),
+      'END'
+    ),
+
+    word: $ => $.word_token,
+    
+    commands: $ => repeat1(field('command', $.command)),
+
+    command: $ => choice(
+      seq(
+        field('target', $.identifier),
+        ':=',
+        field('expression', $.expression),
+        ';'
+      ),
+      seq(
+        'IF',
+        field('condition', $.condition),
+        'THEN',
+        field('then_branch', $.commands),
+        'ELSE',
+        field('else_branch', $.commands),
+        'ENDIF'
+      ),
+      seq(
+        'IF',
+        field('condition', $.condition),
+        'THEN',
+        field('then_branch', $.commands),
+        'ENDIF'
+      ),
+      seq(
+        'WHILE',
+        field('condition', $.condition),
+        'DO',
+        field('body', $.commands),
+        'ENDWHILE'
+      ),
+      seq(
+        'REPEAT',
+        field('body', $.commands),
+        'UNTIL',
+        field('condition', $.condition),
+        ';'
+      ),
+      seq(
+        'FOR',
+        field('variable', $.pidentifier),
+        'FROM',
+        field('start', $.value),
+        'TO',
+        field('end', $.value),
+        'DO',
+        field('body', $.commands),
+        'ENDFOR'
+      ),
+      seq(
+        'FOR',
+        field('variable', $.pidentifier),
+        'FROM',
+        field('start', $.value),
+        'DOWNTO',
+        field('end', $.value),
+        'DO',
+        field('body', $.commands),
+        'ENDFOR'
+      ),
+      seq(field('procedure_call', $.proc_call), ';'),
+      seq('READ', field('target', $.identifier), ';'),
+      seq('WRITE', field('value', $.value), ';')
+    ),
+
+    proc_head: $ => seq(
+      field('name', $.pidentifier),
+      '(',
+      optional(field('arguments', $.args_decl)),
+      ')'
+    ),
+
+    proc_call: $ => seq(
+      field('name', $.pidentifier),
+      '(',
+      optional(field('arguments', $.args)),
+      ')'
+    ),
 
     declarations: $ => seq(
-      $.declaration,
-      repeat(seq(',', $.declaration))
+      field('declaration', $.declaration),
+      repeat(seq(',', field('declaration', $.declaration)))
     ),
 
     declaration: $ => choice(
-      $.pidentifier,
-      seq($.pidentifier, '[', $.num, ':', $.num, ']')
+      field('identifier', $.pidentifier),
+      seq(
+        field('identifier', $.pidentifier),
+        '[',
+        field('start', $.num),
+        ':',
+        field('end', $.num),
+        ']'
+      )
     ),
 
     args_decl: $ => seq(
-      choice($.pidentifier, seq('T', $.pidentifier)),
-      repeat(seq(',', choice($.pidentifier, seq('T', $.pidentifier))))
+      field('argument', choice($.pidentifier, seq('T', $.pidentifier))),
+      repeat(seq(',', field('argument', choice($.pidentifier, seq('T', $.pidentifier)))))
     ),
 
     args: $ => seq(
-      $.pidentifier,
-      repeat(seq(',', $.pidentifier))
+      field('argument', $.pidentifier),
+      repeat(seq(',', field('argument', $.pidentifier)))
     ),
 
     expression: $ => choice(
-      $.value,
-      seq($.value, '+', $.value),
-      seq($.value, '-', $.value),
-      seq($.value, '*', $.value),
-      seq($.value, '/', $.value),
-      seq($.value, '%', $.value)
+      field('value', $.value),
+      seq(field('left', $.value), '+', field('right', $.value)),
+      seq(field('left', $.value), '-', field('right', $.value)),
+      seq(field('left', $.value), '*', field('right', $.value)),
+      seq(field('left', $.value), '/', field('right', $.value)),
+      seq(field('left', $.value), '%', field('right', $.value))
     ),
 
     condition: $ => choice(
-      seq($.value, '=', $.value),
-      seq($.value, '!=', $.value),
-      seq($.value, '>', $.value),
-      seq($.value, '<', $.value),
-      seq($.value, '>=', $.value),
-      seq($.value, '<=', $.value)
+      seq(field('left', $.value), '=', field('right', $.value)),
+      seq(field('left', $.value), '!=', field('right', $.value)),
+      seq(field('left', $.value), '>', field('right', $.value)),
+      seq(field('left', $.value), '<', field('right', $.value)),
+      seq(field('left', $.value), '>=', field('right', $.value)),
+      seq(field('left', $.value), '<=', field('right', $.value))
     ),
 
     value: $ => choice(
-      $.num,
-      $.identifier
+      field('number', $.num),
+      field('identifier', $.identifier)
     ),
 
     identifier: $ => choice(
-      $.pidentifier,
-      seq($.pidentifier, '[', $.pidentifier, ']'),
-      seq($.pidentifier, '[', $.num, ']')
+      field('name', $.pidentifier),
+      seq(field('name', $.pidentifier), '[', field('index', $.pidentifier), ']'),
+      seq(field('name', $.pidentifier), '[', field('index', $.num), ']')
     ),
 
-    _comment: $ => /#.*/, 
+    _comment: $ => /#.*/,
+    
     // Tokens and primitives
     word_token: $ => /[_A-Z]+/,
-
-
-    // evil 
-    pidentifier: ($) => /[_a-z\u{1F300}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F900}-\u{1F9FF}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}]+/u,
-
-    // pidentifier: $ => /[_a-z]+/,
+    pidentifier: $ => /[_a-z]+/,
     num: $ => /[-+]?\d+/
-
   },
-
 });

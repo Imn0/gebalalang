@@ -4,7 +4,8 @@ use clap::builder::Str;
 use serde::Serialize;
 use tree_sitter::Point;
 
-use crate::{ir::IR, Declaration, Either, ErrorDetails, Identifier, ProcArgument};
+use crate::{ast::ast::{Declaration, Identifier, ProcArgument}, ErrorDetails};
+
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SymbolLocation {

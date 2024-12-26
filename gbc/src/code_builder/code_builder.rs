@@ -1,16 +1,21 @@
-use std::{collections::HashMap, fmt::format, fs::File, panic::Location};
+use std::collections::HashMap;
 
-use clap::builder::Str;
-use serde::Serialize;
-use tree_sitter::{ffi::wasm_engine_t, Point};
+use tree_sitter::Point;
 
 use crate::{
+    ast::ast::{
+        Command, Condition, Declaration, Either, Expression, ForDirection, Identifier, MainBlock,
+        ProcArgument, Procedure, Value,
+    },
     ir::{LabelIdx, IR},
-    main, Ast, Command, Condition, Declaration, Either, ErrorDetails, Expression, ForDirection,
-    Identifier, MainBlock, MessageSeverity, ProcArgument, Procedure, Value,
+    ErrorDetails, MessageSeverity,
 };
 
+use super::super::ast::ast::Ast;
+
 use super::memory::{Memory, SymbolLocation};
+
+const MIN_CONST_USAGE: i64 = 1;
 
 #[derive(Clone)]
 pub struct ProcedureInfo {
@@ -19,7 +24,9 @@ pub struct ProcedureInfo {
     pub args: Vec<SymbolLocation>,
 }
 
+#[derive(Debug)]
 struct ConstInfo {
+    pub num_used: i64,
     pub val: i64,
     pub location: usize,
 }
@@ -28,7 +35,7 @@ pub struct CodeGenerator {
     pub messages: Vec<ErrorDetails>,
     pub assembly_code: Vec<IR>,
     memory: Memory,
-    constants: Vec<ConstInfo>,
+    constants: HashMap<i64, ConstInfo>,
     procedures: HashMap<String, ProcedureInfo>,
     next_label: usize,
     last_mem_slot: usize,
@@ -39,7 +46,7 @@ impl CodeGenerator {
     pub fn new() -> Self {
         CodeGenerator {
             memory: Memory::new(),
-            constants: Vec::new(),
+            constants: HashMap::new(),
             procedures: HashMap::new(),
             last_mem_slot: 0x4000000000000000,
             assembly_code: Vec::new(),
@@ -170,6 +177,7 @@ impl CodeGenerator {
 
     fn compile_command(&mut self, command: &Command) {
         match command {
+            Command::HasEffect(_) => {}
             Command::Assignment {
                 identifier,
                 expression,
@@ -280,18 +288,18 @@ impl CodeGenerator {
                 let for_loop_start = LabelIdx(self.next_label);
                 self.next_label += 1;
 
-                let for_num_iters = self.memory.allocate_for_iter(
-                    &Declaration {
-                        name: format!("{}::cnt", variable),
-                        array_size: None,
-                        location: *location,
-                    },
-                    &self.current_scope,
-                ).unwrap().memory_address;
-
-                
-                
-                
+                let for_num_iters = self
+                    .memory
+                    .allocate_for_iter(
+                        &Declaration {
+                            name: format!("{}::cnt", variable),
+                            array_size: None,
+                            location: *location,
+                        },
+                        &self.current_scope,
+                    )
+                    .unwrap()
+                    .memory_address;
 
                 self.ensure_constant(1);
 
@@ -409,8 +417,7 @@ impl CodeGenerator {
                                 self.push_asm(IR::LOAD(arg_mem_loc.memory_address));
                                 self.push_asm(IR::STORE(target_mem_loc.memory_address));
                             } else {
-                                let loc = self.ensure_constant(arg_mem_loc.memory_address as i64);
-                                self.push_asm(IR::LOAD(loc.memory_address));
+                                self.ensure_constant_in_acc(arg_mem_loc.memory_address as i64);
                                 self.push_asm(IR::STORE(target_mem_loc.memory_address));
                             }
                         }
@@ -481,8 +488,18 @@ impl CodeGenerator {
     ) {
         match expression {
             Expression::Value(value) => {
-                let src_loc = self.generate_value(value);
-                self.compile_store_location_to_identifier(src_loc, target_identifier);
+                self.generate_value_in_acc(value);
+                self.compile_store_location_to_identifier(
+                    SymbolLocation {
+                        memory_address: 0,
+                        is_array: false,
+                        array_bounds: None,
+                        is_pointer: false,
+                        read_only: true,
+                        initialized: true,
+                    },
+                    target_identifier,
+                );
             }
 
             Expression::Addition(left, right) => {
@@ -705,13 +722,11 @@ impl CodeGenerator {
 
                     match (array_base_loc.is_pointer, idx_location.is_pointer) {
                         (false, false) => {
-                            let loc = self.ensure_constant(array_base_loc.memory_address as i64);
-                            self.push_asm(IR::LOAD(loc.memory_address));
+                            self.ensure_constant_in_acc(array_base_loc.memory_address as i64);
                             self.push_asm(IR::ADD(idx_location.memory_address));
                         }
                         (false, true) => {
-                            let loc = self.ensure_constant(array_base_loc.memory_address as i64);
-                            self.push_asm(IR::LOAD(loc.memory_address));
+                            self.ensure_constant_in_acc(array_base_loc.memory_address as i64);
                             self.push_asm(IR::ADDI(idx_location.memory_address));
                         }
                         (true, false) => {
@@ -739,8 +754,7 @@ impl CodeGenerator {
                         .get_ident_base_location_no_error(ident, &self.current_scope);
 
                     if array_base_loc.is_pointer {
-                        let idx_loc = self.ensure_constant(*idx_val);
-                        self.push_asm(IR::LOAD(idx_loc.memory_address));
+                        self.ensure_constant_in_acc(*idx_val);
                         self.push_asm(IR::ADD(array_base_loc.memory_address));
 
                         return SymbolLocation {
@@ -793,7 +807,8 @@ impl CodeGenerator {
         let loc;
         match val {
             Value::Number(num) => {
-                loc = self.ensure_constant(num.clone());
+                self.ensure_constant_in_acc(*num);
+                return;
             }
             Value::Identifier(ident) => {
                 loc = self.generate_ident(ident);
@@ -828,10 +843,15 @@ impl CodeGenerator {
             return loc;
         } else {
             let mem_loc = self.memory.allocate_constant(constant.clone());
-            self.constants.push(ConstInfo {
-                val: constant,
-                location: mem_loc,
-            });
+
+            self.constants.insert(
+                constant,
+                ConstInfo {
+                    num_used: 1,
+                    val: constant,
+                    location: mem_loc,
+                },
+            );
 
             return SymbolLocation {
                 memory_address: mem_loc,
@@ -844,9 +864,45 @@ impl CodeGenerator {
         }
     }
 
-    fn fill_in_constants(&self) -> Vec<IR> {
+    pub fn ensure_constant_in_acc(&mut self, constant: i64) {
+        if let Some(loc) = self.memory.get_constant(constant.clone()) {
+            self.push_asm(IR::LOAD(loc.memory_address));
+        } else {
+            let mem_loc = self.memory.allocate_constant(constant.clone());
+            self.constants.insert(
+                constant,
+                ConstInfo {
+                    num_used: 1,
+                    val: constant,
+                    location: mem_loc,
+                },
+            );
+
+            self.push_asm(IR::SET(constant));
+        }
+    }
+
+    fn fill_in_constants(&mut self) -> Vec<IR> {
+        for instruction in self.assembly_code.iter_mut() {
+            match instruction {
+                IR::SET(val) => {
+                    let default_const = ConstInfo {
+                        num_used: -999,
+                        val: *val,
+                        location: 999,
+                    };
+                    let const_info = self.constants.get(val).unwrap_or(&default_const);
+
+                    if const_info.num_used >= MIN_CONST_USAGE {
+                        *instruction = IR::LOAD(const_info.location);
+                    }
+                }
+                _ => {}
+            }
+        }
+
         let mut v = Vec::new();
-        for c in &self.constants {
+        for (_, c) in &self.constants {
             v.push(IR::SET(c.val));
             v.push(IR::STORE(c.location));
         }
@@ -901,9 +957,7 @@ impl CodeGenerator {
 
         let arg2 = p_arg2.memory_address;
 
-        let zero_loc = self.ensure_constant(0);
-
-        self.push_asm(IR::LOAD(zero_loc.memory_address));
+        self.ensure_constant_in_acc(0);
         self.push_asm(IR::STORE(p_result.memory_address));
 
         self.push_asm(IR::LOAD(p_arg2.memory_address));
@@ -917,23 +971,20 @@ impl CodeGenerator {
         self.next_label += 1;
 
         let sign_flag = self.last_mem_slot - 1;
-        let zero_loc = self.ensure_constant(0);
-        let m_one_loc = self.ensure_constant(-1);
-        let one_loc = self.ensure_constant(1);
         let arg_1_pos = LabelIdx(self.next_label);
         self.next_label += 1;
         let arg_2_pos = LabelIdx(self.next_label);
         self.next_label += 1;
 
-        self.push_asm(IR::LOAD(one_loc.memory_address));
+        self.ensure_constant_in_acc(1);
         self.push_asm(IR::STORE(sign_flag));
 
         self.push_asm(IR::LOAD(arg1));
         self.push_asm(IR::jp(arg_1_pos.clone()));
 
-        self.push_asm(IR::LOAD(m_one_loc.memory_address));
+        self.ensure_constant_in_acc(-1);
         self.push_asm(IR::STORE(sign_flag));
-        self.push_asm(IR::LOAD(zero_loc.memory_address));
+        self.ensure_constant_in_acc(0);
         self.push_asm(IR::SUB(arg1));
         self.push_asm(IR::STORE(arg1));
 
@@ -945,10 +996,12 @@ impl CodeGenerator {
         self.push_asm(IR::LOAD(arg2));
         self.push_asm(IR::jp(arg_2_pos.clone()));
 
-        self.push_asm(IR::LOAD(zero_loc.memory_address));
+        self.ensure_constant_in_acc(0);
+
         self.push_asm(IR::SUB(sign_flag));
         self.push_asm(IR::STORE(sign_flag));
-        self.push_asm(IR::LOAD(zero_loc.memory_address));
+        self.ensure_constant_in_acc(0);
+
         self.push_asm(IR::SUB(arg2));
         self.push_asm(IR::STORE(arg2));
 
@@ -1002,7 +1055,7 @@ impl CodeGenerator {
         self.push_asm(IR::LOAD(sign_flag));
         self.push_asm(IR::jp(is_pos.clone()));
 
-        self.push_asm(IR::LOAD(zero_loc.memory_address));
+        self.ensure_constant_in_acc(0);
         self.push_asm(IR::SUB(p_result.memory_address));
         self.push_asm(IR::lbl_jump(skip.clone()));
 
@@ -1074,9 +1127,6 @@ impl CodeGenerator {
             .extend([p_arg1, p_arg2, div_result.clone(), mod_result.clone()]);
 
         // setup
-        let zero = self.ensure_constant(0).memory_address;
-        let m_one = self.ensure_constant(-1).memory_address;
-        let one = self.ensure_constant(1).memory_address;
 
         let sign_flag = self.last_mem_slot;
         let mod_final_sign = self.last_mem_slot - 1;
@@ -1092,14 +1142,14 @@ impl CodeGenerator {
         // if b == 0
         self.push_asm(IR::LOAD(arg2));
         self.push_asm(IR::jnz(LabelIdx(self.next_label)));
-        self.push_asm(IR::LOAD(zero));
+        self.ensure_constant_in_acc(0);
         self.push_asm(IR::STORE(div_result.memory_address));
         self.push_asm(IR::STORE(mod_result.memory_address));
         self.push_asm(IR::RTRN(ret_addr));
         self.push_label();
 
         // sign = 1, mod_sign = 1
-        self.push_asm(IR::LOAD(one));
+        self.ensure_constant_in_acc(1);
         self.push_asm(IR::STORE(sign_flag));
         self.push_asm(IR::STORE(mod_final_sign));
 
@@ -1107,9 +1157,9 @@ impl CodeGenerator {
         self.push_asm(IR::LOAD(arg1));
         self.push_asm(IR::jp(arg_1_pos.clone()));
 
-        self.push_asm(IR::LOAD(m_one));
+        self.ensure_constant_in_acc(-1);
         self.push_asm(IR::STORE(sign_flag));
-        self.push_asm(IR::LOAD(zero));
+        self.ensure_constant_in_acc(0);
         self.push_asm(IR::SUB(arg1));
         self.push_asm(IR::STORE(arg1));
 
@@ -1122,15 +1172,15 @@ impl CodeGenerator {
         self.push_asm(IR::LOAD(arg2));
         self.push_asm(IR::jp(arg_2_pos.clone()));
 
-        self.push_asm(IR::LOAD(zero));
+        self.ensure_constant_in_acc(0);
         self.push_asm(IR::SUB(sign_flag));
         self.push_asm(IR::STORE(sign_flag));
 
-        self.push_asm(IR::LOAD(zero));
+        self.ensure_constant_in_acc(0);
         self.push_asm(IR::SUB(mod_final_sign));
         self.push_asm(IR::STORE(mod_final_sign));
 
-        self.push_asm(IR::LOAD(zero));
+        self.ensure_constant_in_acc(0);
         self.push_asm(IR::SUB(arg2));
         self.push_asm(IR::STORE(arg2));
 
@@ -1139,10 +1189,10 @@ impl CodeGenerator {
             name: format!(""),
         });
 
-        self.push_asm(IR::LOAD(zero));
+        self.ensure_constant_in_acc(0);
         self.push_asm(IR::STORE(quotient));
 
-        self.push_asm(IR::LOAD(one));
+        self.ensure_constant_in_acc(1);
         self.push_asm(IR::STORE(power_of_two));
 
         /*

@@ -10,15 +10,12 @@ mod cli;
 use cli::CliArgs;
 
 mod ast;
-use ast::*;
-
-mod ast_validate;
+use ast::ast::{Either, AstBuilder};
 
 mod error;
 use error::*;
 
 mod ir;
-use ir::IR;
 
 mod code_builder;
 use code_builder::code_builder::CodeGenerator;
@@ -56,6 +53,7 @@ fn main() -> std::io::Result<()> {
     let mut code_asm = CodeGenerator::new();
     let mut context = SourceContext::new(code.as_str(), &input_file);
     if let Either::Left(ast) = ast_builder.build_ast(&tree) {
+        println!("{:#?}" , ast);
         code_asm.generate_asm(ast);
     } else if let Either::Right(error) = ast_builder.build_ast(&tree) {
         context.add_message(error);        

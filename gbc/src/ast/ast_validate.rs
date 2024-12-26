@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::{Ast, Command};
+
+use super::ast::Ast;
+use super::ast::Command;
 
 #[derive(Debug, Clone)]
 pub struct RecursiveCallInfo {

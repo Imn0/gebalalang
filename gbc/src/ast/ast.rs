@@ -1,6 +1,11 @@
 use std::{fmt, ops::Not};
 
+use clap::Id;
+
 use crate::{ErrorDetails, MessageSeverity};
+
+use super::ast_optimizer::Optimizer;
+
 
 #[derive(Debug, Clone)]
 pub struct AstFlags {
@@ -76,6 +81,7 @@ pub enum Command {
     },
     Read(Identifier),
     Write(Value),
+    HasEffect(Identifier)
 }
 
 #[derive(Debug, Clone)]
@@ -191,7 +197,7 @@ impl<'a> AstBuilder<'a> {
             }
         }
 
-        let ast = Ast {
+        let mut ast = Ast {
             flags: self.flags.clone(),
             procedures,
             main_block: main_block.expect("Main block not found"),
@@ -212,6 +218,9 @@ impl<'a> AstBuilder<'a> {
                 severity: MessageSeverity::ERROR,
             });
         }
+
+        let mut optimizer = Optimizer::new();
+        optimizer.optimize(&mut ast);
 
         return Either::Left(ast);
     }
@@ -266,10 +275,13 @@ impl<'a> AstBuilder<'a> {
                 }
                 "commands" => {
                     commands = self.build_commands(&child);
-                }
+                },
                 _ => {
                     println!("{}", child.kind())
                 }
+            }
+            for proc_arg in &args {
+                commands.push(Command::HasEffect(Identifier { name: proc_arg.name.clone(), index: None, location: (start, end) }));
             }
         }
         Ok(Procedure {
@@ -314,6 +326,12 @@ impl<'a> AstBuilder<'a> {
             match child.kind() {
                 "command" => {
                     let cmd = self.parse_command(&child).unwrap();
+
+                    if let Command::ProcedureCall{proc_name,arguments,location: l} = cmd.clone() {
+                        for arg in arguments {
+                            commands.push(Command::HasEffect(Identifier { name: arg.name, index: None, location:l.clone()  }));
+                        }
+                    } 
                     commands.push(cmd);
                 }
                 _ => {}
