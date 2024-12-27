@@ -1,20 +1,19 @@
-use std::{fmt, ops::Not};
+use crate::{
+    error::{Message, MessageSeverity},
+    program::Program,
+};
+use std::ops::Not;
+use tree_sitter::{Query, QueryCursor, Tree};
+use tree_sitter_gbl::LANGUAGE;
 
-use clap::Id;
-
-use crate::{ErrorDetails, MessageSeverity};
-
-use super::ast_optimizer::Optimizer;
-
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AstFlags {
     pub has_mul: bool,
     pub has_div: bool,
     pub has_mod: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Ast {
     pub flags: AstFlags,
     pub procedures: Vec<Procedure>,
@@ -31,7 +30,7 @@ pub struct Procedure {
     pub location: (tree_sitter::Point, tree_sitter::Point),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MainBlock {
     pub declarations: Vec<Declaration>,
     pub commands: Vec<Command>,
@@ -81,7 +80,7 @@ pub enum Command {
     },
     Read(Identifier),
     Write(Value),
-    HasEffect(Identifier)
+    HasEffect(Identifier),
 }
 
 #[derive(Debug, Clone)]
@@ -157,31 +156,50 @@ pub struct Declaration {
     pub location: (tree_sitter::Point, tree_sitter::Point),
 }
 
-// AST Builder
-pub struct AstBuilder<'a> {
-    source_code: &'a str,
-    flags: AstFlags,
+pub trait GenerateAst {
+    fn generate_ast(&mut self) -> Result<(), ()>;
+}
+
+impl GenerateAst for Program {
+    fn generate_ast(&mut self) -> Result<(), ()> {
+        let mut parser = tree_sitter::Parser::new();
+        if let Err(err) = parser.set_language(&LANGUAGE.into()) {
+            self.messages.push(Message::GeneralMessage {
+                severity: crate::error::MessageSeverity::FATAL,
+                message: err.to_string().to_ascii_lowercase(),
+            });
+            return Err(());
+        }
+
+        let tree = parser.parse(self.source_code.clone(), None).unwrap();
+
+        let mut ast_builder = AstBuilder::new(self);
+        if let Err(err) = ast_builder.build_ast(&tree) {
+            self.messages.push(err);
+            return Err(());
+        }
+
+        Ok(())
+    }
+}
+
+struct AstBuilder<'a> {
+    program: &'a mut Program,
 }
 
 impl<'a> AstBuilder<'a> {
-    pub fn new(source_code: &'a str) -> Self {
-        Self {
-            source_code,
-            flags: AstFlags {
-                has_mul: false,
-                has_div: false,
-                has_mod: false,
-            },
-        }
+    pub fn new(prog: &'a mut Program) -> Self {
+        Self { program: prog }
     }
 
-    pub fn build_ast(&mut self, tree: &tree_sitter::Tree) -> Either<Ast, ErrorDetails> {
-        let root_node = tree.root_node();
-        let start = root_node.start_position();
-        let end = root_node.end_position();
+    pub fn build_ast(&mut self, tree: &tree_sitter::Tree) -> Result<(), Message> {
+        if let Some(err) = self.find_syntax_errors(tree) {
+            return Err(err);
+        }
 
+        let root_node = tree.root_node();
         let mut procedures = Vec::new();
-        let mut main_block = None;
+        let mut main_block: MainBlock = MainBlock::default();
 
         for child in root_node.named_children(&mut root_node.walk()) {
             match child.kind() {
@@ -189,7 +207,7 @@ impl<'a> AstBuilder<'a> {
                     procedures.push(self.parse_procedure(&child).unwrap());
                 }
                 "main" => {
-                    main_block = Some(self.build_main_block(&child));
+                    main_block = self.build_main_block(&child);
                 }
                 _ => {
                     panic!("unknown type {}", child.kind())
@@ -197,32 +215,10 @@ impl<'a> AstBuilder<'a> {
             }
         }
 
-        let mut ast = Ast {
-            flags: self.flags.clone(),
-            procedures,
-            main_block: main_block.expect("Main block not found"),
-            location: (start, end),
-        };
+        self.program.ast.main_block = main_block;
+        self.program.ast.procedures = procedures;
 
-        let rec_calls = ast.detect_recursive_calls();
-        if rec_calls.len() > 0 {
-            return Either::Right(ErrorDetails {
-                message: format!(
-                    "recursive calls are not allowed {} : {}",
-                    rec_calls[0].procedure_name,
-                    rec_calls[0].recursive_path.join(" <- ")
-                ),
-                location: rec_calls[0]
-                    .location
-                    .unwrap_or((tree_sitter::Point::default(), tree_sitter::Point::default())),
-                severity: MessageSeverity::ERROR,
-            });
-        }
-
-        let mut optimizer = Optimizer::new();
-        optimizer.optimize(&mut ast);
-
-        return Either::Left(ast);
+        Ok(())
     }
 
     fn parse_procedure(&mut self, node: &tree_sitter::Node) -> Result<Procedure, String> {
@@ -275,13 +271,17 @@ impl<'a> AstBuilder<'a> {
                 }
                 "commands" => {
                     commands = self.build_commands(&child);
-                },
+                }
                 _ => {
                     println!("{}", child.kind())
                 }
             }
             for proc_arg in &args {
-                commands.push(Command::HasEffect(Identifier { name: proc_arg.name.clone(), index: None, location: (start, end) }));
+                commands.push(Command::HasEffect(Identifier {
+                    name: proc_arg.name.clone(),
+                    index: None,
+                    location: (start, end),
+                }));
             }
         }
         Ok(Procedure {
@@ -327,11 +327,20 @@ impl<'a> AstBuilder<'a> {
                 "command" => {
                     let cmd = self.parse_command(&child).unwrap();
 
-                    if let Command::ProcedureCall{proc_name,arguments,location: l} = cmd.clone() {
+                    if let Command::ProcedureCall {
+                        proc_name,
+                        arguments,
+                        location: l,
+                    } = cmd.clone()
+                    {
                         for arg in arguments {
-                            commands.push(Command::HasEffect(Identifier { name: arg.name, index: None, location:l.clone()  }));
+                            commands.push(Command::HasEffect(Identifier {
+                                name: arg.name,
+                                index: None,
+                                location: l.clone(),
+                            }));
                         }
-                    } 
+                    }
                     commands.push(cmd);
                 }
                 _ => {}
@@ -478,7 +487,7 @@ impl<'a> AstBuilder<'a> {
                     return Ok(Command::Write(value));
                 }
                 _ => {
-                    return Err(format!("unsupported {}", child.kind()));
+                    return Err(format!("unsupported {} {}", child.kind(), self.extract_text(node)));
                 }
             }
         }
@@ -493,7 +502,7 @@ impl<'a> AstBuilder<'a> {
 
         let operator = node
             .child(1)
-            .and_then(|op| op.utf8_text(self.source_code.as_bytes()).ok())
+            .and_then(|op| op.utf8_text(self.program.source_code.as_bytes()).ok())
             .ok_or("No operator found")?;
 
         match operator {
@@ -520,15 +529,15 @@ impl<'a> AstBuilder<'a> {
                 "+" => Ok(Expression::Addition(first_val, second_val)),
                 "-" => Ok(Expression::Subtraction(first_val, second_val)),
                 "*" => {
-                    self.flags.has_mul = true;
+                    self.program.ast.flags.has_mul = true;
                     Ok(Expression::Multiplication(first_val, second_val))
                 }
                 "/" => {
-                    self.flags.has_div = true;
+                    self.program.ast.flags.has_div = true;
                     Ok(Expression::Division(first_val, second_val))
                 }
                 "%" => {
-                    self.flags.has_mod = true;
+                    self.program.ast.flags.has_mod = true;
                     Ok(Expression::Modulo(first_val, second_val))
                 }
 
@@ -664,8 +673,19 @@ impl<'a> AstBuilder<'a> {
     }
 
     fn extract_text(&self, node: &tree_sitter::Node) -> String {
-        node.utf8_text(self.source_code.as_bytes())
+        node.utf8_text(self.program.source_code.as_bytes())
             .unwrap()
             .to_string()
+    }
+
+    fn find_syntax_errors(&mut self, tree: &Tree) -> Option<Message> {
+        if tree.root_node().has_error() {
+            return Some(Message::GeneralMessage {
+                severity: MessageSeverity::ERROR,
+                message: format!("there is some syntax error somewhere go find it!"),
+            });
+        }
+        println!("{}", tree.root_node());
+        None
     }
 }
