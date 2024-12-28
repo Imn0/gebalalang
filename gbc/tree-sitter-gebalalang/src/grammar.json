@@ -7,15 +7,20 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "FIELD",
-          "name": "procedures",
-          "content": {
-            "type": "REPEAT",
-            "content": {
-              "type": "SYMBOL",
-              "name": "procedure"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "procedures",
+              "content": {
+                "type": "SYMBOL",
+                "name": "procedures"
+              }
+            },
+            {
+              "type": "BLANK"
             }
-          }
+          ]
         },
         {
           "type": "FIELD",
@@ -26,6 +31,17 @@
           }
         }
       ]
+    },
+    "procedures": {
+      "type": "FIELD",
+      "name": "procedure",
+      "content": {
+        "type": "REPEAT1",
+        "content": {
+          "type": "SYMBOL",
+          "name": "procedure"
+        }
+      }
     },
     "procedure": {
       "type": "SEQ",

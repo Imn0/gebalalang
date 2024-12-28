@@ -8,9 +8,13 @@ module.exports = grammar({
   rules: {
     program_all: ($) =>
       seq(
-        field("procedures", repeat($.procedure)),
+        optional(field("procedures", $.procedures)),
         field("main_program", $.main)
       ),
+
+    procedures: $ => (
+      field("procedure",repeat1($.procedure))
+    ),
 
     procedure: ($) =>
       seq(

@@ -23,11 +23,11 @@ impl Program {
             Err(err) => {
                 self.print_message(Message::GeneralMessage {
                     severity: MessageSeverity::ERROR,
-                    message: format!("cannot load file: {}", path).to_string(),
+                    message: format!("cannot load file: {}", path).as_str(),
                 });
                 self.print_message(Message::GeneralMessage {
                     severity: MessageSeverity::ERROR,
-                    message: err.to_string().to_ascii_lowercase(),
+                    message: &err.to_string().to_ascii_lowercase(),
                 });
                 Err(())
             }
@@ -47,7 +47,8 @@ impl Program {
                 message: format!(
                     "cannot open file to save: {}",
                     err.to_string().to_ascii_lowercase()
-                ),
+                )
+                .as_str(),
             });
             return Err(());
         }
@@ -62,7 +63,8 @@ impl Program {
                 message: format!(
                     "cannot save to file: {}",
                     err.to_string().to_ascii_lowercase()
-                ),
+                )
+                .as_str(),
             });
             return Err(());
         }

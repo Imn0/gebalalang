@@ -1,7 +1,7 @@
 use core::fmt;
 use std::{
-    cmp::max,
-    io::{self, Write},
+    cmp::{max, min},
+    io::{self, Write}, vec,
 };
 
 use tree_sitter::Point;
@@ -31,7 +31,7 @@ impl MessageSeverity {
     pub fn prefix(&self) -> &str {
         match self {
             MessageSeverity::DEBUG => "[debug] ",
-            MessageSeverity::INFO => "[infp]  ",
+            MessageSeverity::INFO => "[info]  ",
             MessageSeverity::WARNING => "[warning]  ",
             MessageSeverity::ERROR => "[error] ",
             MessageSeverity::FATAL => "[FATAL] ",
@@ -39,19 +39,19 @@ impl MessageSeverity {
     }
 }
 
-pub enum Message {
+pub enum Message<'a> {
     GeneralMessage {
         severity: MessageSeverity,
-        message: String,
+        message: &'a str,
     },
     CodeMessage {
         severity: MessageSeverity,
-        message: String,
+        message: &'a str,
         location: Location,
     },
 }
 
-impl fmt::Display for Message {
+impl<'a> fmt::Display for Message<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Message::CodeMessage {
@@ -100,11 +100,12 @@ impl DisplayMessage for Program {
                 message,
                 location,
             } => {
-                let lines: Vec<&str> = self.source_code.lines().collect();
+                let mut lines: Vec<&str> = self.source_code.lines().collect();
+                lines.push(" ");
 
                 let header_spaces_num = (lines.len() as f32).log10() as usize + 2;
                 let header_spaces = " ".repeat(header_spaces_num);
-
+                
                 let start_row = location.0.row;
                 let start_column = location.0.column;
                 let end_row = location.1.row;
@@ -126,6 +127,13 @@ impl DisplayMessage for Program {
                 );
                 eprintln!("\x1b[1;34m{}|\x1b[0m ", header_spaces);
                 if start_row == end_row {
+
+                    let end = if start_column == end_column {
+                        end_column+1
+                    } else {
+                        end_column
+                    };
+
                     eprint!(
                         "\x1b[1;34m{:>width$} |\x1b[0m ",
                         start_row + 1,
@@ -138,7 +146,7 @@ impl DisplayMessage for Program {
                         eprint!(" ")
                     }
                     eprint!("{}", severity.color_code());
-                    for _ in start_column..end_column {
+                    for _ in start_column..end {
                         eprint!("^")
                     }
                     eprint!("\x1b[0m");

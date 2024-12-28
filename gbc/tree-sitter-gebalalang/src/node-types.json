@@ -720,6 +720,22 @@
     }
   },
   {
+    "type": "procedures",
+    "named": true,
+    "fields": {
+      "procedure": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "procedure",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "program_all",
     "named": true,
     "root": true,
@@ -735,11 +751,11 @@
         ]
       },
       "procedures": {
-        "multiple": true,
+        "multiple": false,
         "required": false,
         "types": [
           {
-            "type": "procedure",
+            "type": "procedures",
             "named": true
           }
         ]

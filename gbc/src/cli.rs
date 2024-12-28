@@ -12,7 +12,7 @@ pub fn parse_args(args: Vec<String>, cli_args: &mut CliArgs) -> Result<(), ()> {
             "{}",
             Message::GeneralMessage {
                 severity: MessageSeverity::ERROR,
-                message: format!("no input file provided")
+                message: "no input file provided"
             }
         );
 

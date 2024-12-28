@@ -2,7 +2,7 @@ use crate::{
     error::{DisplayMessage, Message, MessageSeverity},
     program::Program,
 };
-use std::{any::Any, ops::Not};
+use std::{collections::HashMap, ops::Not};
 use tree_sitter::{Node, Tree};
 use tree_sitter_gbl::LANGUAGE;
 
@@ -24,7 +24,7 @@ pub struct Ast {
     pub has_mul: bool,
     pub has_div: bool,
     pub has_mod: bool,
-    pub procedures: Vec<Procedure>,
+    pub procedures: HashMap<String, Procedure>,
     pub main_block: MainBlock,
     pub location: Location,
 }
@@ -166,17 +166,13 @@ pub struct Declaration {
     pub location: Location,
 }
 
-pub trait GenerateAst {
-    fn generate_ast(&mut self) -> Result<(), ()>;
-}
-
-impl GenerateAst for Program {
-    fn generate_ast(&mut self) -> Result<(), ()> {
+impl Program {
+    pub fn ast_generate(&mut self) -> Result<(), ()> {
         let mut parser = tree_sitter::Parser::new();
         if let Err(err) = parser.set_language(&LANGUAGE.into()) {
             self.print_message(Message::GeneralMessage {
                 severity: crate::error::MessageSeverity::FATAL,
-                message: err.to_string().to_ascii_lowercase(),
+                message: &err.to_string().to_ascii_lowercase(),
             });
             return Err(());
         }
@@ -186,14 +182,13 @@ impl GenerateAst for Program {
         if tree.root_node().has_error() {
             self.print_message(Message::GeneralMessage {
                 severity: MessageSeverity::ERROR,
-                message: format!("there is a syntax error somewhere go find it !"),
+                message: "there is a syntax error somewhere go find it !",
             });
             let issue_node = rec_find_error(tree.root_node()).unwrap();
             self.print_message(Message::CodeMessage {
                 severity: MessageSeverity::ERROR,
-                message: "try somewhere here".to_string(),
-                // location: issue_node.get_location(),
-                location: tree.root_node().get_location(),
+                message: format!("try somwhere here {}", issue_node.kind()).as_str(),
+                location: issue_node.get_location(),
             });
             return Err(());
         }
@@ -202,7 +197,7 @@ impl GenerateAst for Program {
 }
 
 fn rec_find_error(node: Node) -> Option<Node> {
-    if node.is_error() {
+    if node.is_error() || node.is_missing() {
         return Some(node.clone());
     }
 
@@ -256,6 +251,41 @@ impl Program {
     }
 
     fn populate_procedures(&mut self, node: Node) {
+        assert_eq!(node.kind(), "procedures");
+
+        for child in node.named_children(&mut node.walk()) {
+            let proc = self.gen_procedure(child);
+
+            if let Some(Procedure {
+                name,
+                args: _,
+                declarations: _,
+                commands: _,
+                location,
+            }) = self.ast.procedures.get(&proc.name)
+            {
+                self.ast.is_valid = false;
+                self.print_message(Message::CodeMessage {
+                    severity: MessageSeverity::ERROR,
+                    message: format!("procedure {} already defined", name).as_str(),
+                    location: proc.location,
+                });
+                self.print_message(Message::CodeMessage {
+                    severity: MessageSeverity::INFO,
+                    message: format!("procedure {} previously defined here", name).as_str(),
+                    location: location.clone(),
+                });
+
+                return;
+            }
+
+            self.ast.procedures.insert(proc.name.clone(), proc);
+        }
+    }
+
+    fn gen_procedure(&self, node: Node) -> Procedure {
+        assert_eq!(node.kind(), "procedure");
+
         let proc_head_node = node.child_by_field_name("header").unwrap();
         let name = self.get_text(proc_head_node.child_by_field_name("name").unwrap());
 
@@ -278,13 +308,13 @@ impl Program {
             Vec::new()
         };
 
-        self.ast.procedures.push(Procedure {
+        Procedure {
             name,
             args,
             declarations,
             commands,
-            location: node.get_location(),
-        });
+            location: proc_head_node.get_location(),
+        }
     }
 
     fn gen_declarations(&self, node: Node) -> Vec<Declaration> {
