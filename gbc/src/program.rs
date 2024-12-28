@@ -1,12 +1,10 @@
 use crate::ast::Ast;
-use crate::error::{Message, MessageSeverity};
+use crate::error::{DisplayMessage, Message, MessageSeverity};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 
 #[derive(Default)]
 pub struct Program {
-    pub messages: Vec<Message>,
-
     pub code_path: String,
     pub source_code: String,
     pub output: Box<[u8]>,
@@ -23,11 +21,11 @@ impl Program {
                 Ok(())
             }
             Err(err) => {
-                self.messages.push(Message::GeneralMessage {
+                self.print_message(Message::GeneralMessage {
                     severity: MessageSeverity::ERROR,
-                    message: format!("cannot load file {}", path).to_string(),
+                    message: format!("cannot load file: {}", path).to_string(),
                 });
-                self.messages.push(Message::GeneralMessage {
+                self.print_message(Message::GeneralMessage {
                     severity: MessageSeverity::ERROR,
                     message: err.to_string().to_ascii_lowercase(),
                 });
@@ -37,33 +35,17 @@ impl Program {
     }
 
     pub fn save_compiled(&mut self, path: &str) -> Result<(), ()> {
-        let mut r1 = Ok(());
-        if let Some(parent) = std::path::Path::new(path).parent() {
-            r1 = fs::create_dir_all(parent);
-        }
-
-        if let Err(err) = r1 {
-            self.messages.push(Message::GeneralMessage {
-                severity: MessageSeverity::ERROR,
-                message: format!(
-                    "cannot create a directory {}",
-                    err.to_string().to_ascii_lowercase()
-                ),
-            });
-            return Err(());
-        }
-
         let r2 = OpenOptions::new()
-            .create(true) //
+            .create(true)
             .write(true)
             .truncate(true)
             .open(path);
 
         if let Err(err) = r2 {
-            self.messages.push(Message::GeneralMessage {
+            self.print_message(Message::GeneralMessage {
                 severity: MessageSeverity::ERROR,
                 message: format!(
-                    "cannot open file to save {}",
+                    "cannot open file to save: {}",
                     err.to_string().to_ascii_lowercase()
                 ),
             });
@@ -75,10 +57,10 @@ impl Program {
         let r3 = file.write_all(&self.output);
 
         if let Err(err) = r3 {
-            self.messages.push(Message::GeneralMessage {
+            self.print_message(Message::GeneralMessage {
                 severity: MessageSeverity::ERROR,
                 message: format!(
-                    "cannot save to save {}",
+                    "cannot save to file: {}",
                     err.to_string().to_ascii_lowercase()
                 ),
             });

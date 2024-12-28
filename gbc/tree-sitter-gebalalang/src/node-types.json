@@ -1,5 +1,31 @@
 [
   {
+    "type": "arg_decl",
+    "named": true,
+    "fields": {
+      "T": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "T",
+            "named": false
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pidentifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "args",
     "named": true,
     "fields": {
@@ -24,11 +50,93 @@
         "required": true,
         "types": [
           {
-            "type": "T",
-            "named": false
+            "type": "arg_decl",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "assignment_command",
+    "named": false,
+    "fields": {
+      "index": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "num",
+            "named": true
           },
           {
             "type": "pidentifier",
+            "named": true
+          }
+        ]
+      },
+      "left": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "pidentifier",
+            "named": true
+          }
+        ]
+      },
+      "op": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "value",
             "named": true
           }
         ]
@@ -44,8 +152,20 @@
         "required": false,
         "types": [
           {
-            "type": "commands",
-            "named": true
+            "type": "for_downto_command",
+            "named": false
+          },
+          {
+            "type": "for_to_command",
+            "named": false
+          },
+          {
+            "type": "repeat_until_command",
+            "named": false
+          },
+          {
+            "type": "while_command",
+            "named": false
           }
         ]
       },
@@ -54,8 +174,20 @@
         "required": false,
         "types": [
           {
-            "type": "condition",
-            "named": true
+            "type": "if_command",
+            "named": false
+          },
+          {
+            "type": "if_else_command",
+            "named": false
+          },
+          {
+            "type": "repeat_until_command",
+            "named": false
+          },
+          {
+            "type": "while_command",
+            "named": false
           }
         ]
       },
@@ -64,8 +196,8 @@
         "required": false,
         "types": [
           {
-            "type": "commands",
-            "named": true
+            "type": "if_else_command",
+            "named": false
           }
         ]
       },
@@ -74,8 +206,12 @@
         "required": false,
         "types": [
           {
-            "type": "value",
-            "named": true
+            "type": "for_downto_command",
+            "named": false
+          },
+          {
+            "type": "for_to_command",
+            "named": false
           }
         ]
       },
@@ -84,8 +220,8 @@
         "required": false,
         "types": [
           {
-            "type": "expression",
-            "named": true
+            "type": "assignment_command",
+            "named": false
           }
         ]
       },
@@ -94,8 +230,8 @@
         "required": false,
         "types": [
           {
-            "type": "proc_call",
-            "named": true
+            "type": "procedure_call_command",
+            "named": false
           }
         ]
       },
@@ -104,8 +240,12 @@
         "required": false,
         "types": [
           {
-            "type": "value",
-            "named": true
+            "type": "for_downto_command",
+            "named": false
+          },
+          {
+            "type": "for_to_command",
+            "named": false
           }
         ]
       },
@@ -114,8 +254,12 @@
         "required": false,
         "types": [
           {
-            "type": "identifier",
-            "named": true
+            "type": "assignment_command",
+            "named": false
+          },
+          {
+            "type": "read_command",
+            "named": false
           }
         ]
       },
@@ -124,8 +268,12 @@
         "required": false,
         "types": [
           {
-            "type": "commands",
-            "named": true
+            "type": "if_command",
+            "named": false
+          },
+          {
+            "type": "if_else_command",
+            "named": false
           }
         ]
       },
@@ -134,8 +282,8 @@
         "required": false,
         "types": [
           {
-            "type": "value",
-            "named": true
+            "type": "write_command",
+            "named": false
           }
         ]
       },
@@ -144,8 +292,12 @@
         "required": false,
         "types": [
           {
-            "type": "pidentifier",
-            "named": true
+            "type": "for_downto_command",
+            "named": false
+          },
+          {
+            "type": "for_to_command",
+            "named": false
           }
         ]
       }
@@ -161,32 +313,6 @@
         "types": [
           {
             "type": "command",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "condition",
-    "named": true,
-    "fields": {
-      "left": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "value",
-            "named": true
-          }
-        ]
-      },
-      "right": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "value",
             "named": true
           }
         ]
@@ -246,35 +372,71 @@
     }
   },
   {
-    "type": "expression",
-    "named": true,
+    "type": "for_downto_command",
+    "named": false,
     "fields": {
-      "left": {
-        "multiple": false,
+      "command": {
+        "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "value",
+            "type": "command",
             "named": true
           }
         ]
       },
-      "right": {
+      "identifier": {
         "multiple": false,
         "required": false,
         "types": [
           {
-            "type": "value",
+            "type": "identifier",
             "named": true
           }
         ]
       },
-      "value": {
+      "number": {
         "multiple": false,
         "required": false,
         "types": [
           {
-            "type": "value",
+            "type": "num",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "for_to_command",
+    "named": false,
+    "fields": {
+      "command": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "command",
+            "named": true
+          }
+        ]
+      },
+      "identifier": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "number": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "num",
             "named": true
           }
         ]
@@ -312,6 +474,138 @@
     }
   },
   {
+    "type": "if_command",
+    "named": false,
+    "fields": {
+      "command": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "command",
+            "named": true
+          }
+        ]
+      },
+      "left": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      },
+      "op": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "=",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "if_else_command",
+    "named": false,
+    "fields": {
+      "command": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "command",
+            "named": true
+          }
+        ]
+      },
+      "left": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      },
+      "op": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "=",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "main",
     "named": true,
     "fields": {
@@ -331,32 +625,6 @@
         "types": [
           {
             "type": "declarations",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "proc_call",
-    "named": true,
-    "fields": {
-      "arguments": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "args",
-            "named": true
-          }
-        ]
-      },
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "pidentifier",
             "named": true
           }
         ]
@@ -426,6 +694,32 @@
     }
   },
   {
+    "type": "procedure_call_command",
+    "named": false,
+    "fields": {
+      "arguments": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "args",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pidentifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "program_all",
     "named": true,
     "root": true,
@@ -453,8 +747,196 @@
     }
   },
   {
+    "type": "read_command",
+    "named": false,
+    "fields": {
+      "index": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "num",
+            "named": true
+          },
+          {
+            "type": "pidentifier",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pidentifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "repeat_until_command",
+    "named": false,
+    "fields": {
+      "command": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "command",
+            "named": true
+          }
+        ]
+      },
+      "left": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      },
+      "op": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "=",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "value",
     "named": true,
+    "fields": {
+      "identifier": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "number": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "num",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "while_command",
+    "named": false,
+    "fields": {
+      "command": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "command",
+            "named": true
+          }
+        ]
+      },
+      "left": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      },
+      "op": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "=",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "write_command",
+    "named": false,
     "fields": {
       "identifier": {
         "multiple": false,
@@ -519,14 +1001,6 @@
     "named": false
   },
   {
-    "type": ":=",
-    "named": false
-  },
-  {
-    "type": ";",
-    "named": false
-  },
-  {
     "type": "<",
     "named": false
   },
@@ -551,43 +1025,7 @@
     "named": false
   },
   {
-    "type": "DO",
-    "named": false
-  },
-  {
-    "type": "DOWNTO",
-    "named": false
-  },
-  {
-    "type": "ELSE",
-    "named": false
-  },
-  {
     "type": "END",
-    "named": false
-  },
-  {
-    "type": "ENDFOR",
-    "named": false
-  },
-  {
-    "type": "ENDIF",
-    "named": false
-  },
-  {
-    "type": "ENDWHILE",
-    "named": false
-  },
-  {
-    "type": "FOR",
-    "named": false
-  },
-  {
-    "type": "FROM",
-    "named": false
-  },
-  {
-    "type": "IF",
     "named": false
   },
   {
@@ -603,35 +1041,7 @@
     "named": false
   },
   {
-    "type": "READ",
-    "named": false
-  },
-  {
-    "type": "REPEAT",
-    "named": false
-  },
-  {
     "type": "T",
-    "named": false
-  },
-  {
-    "type": "THEN",
-    "named": false
-  },
-  {
-    "type": "TO",
-    "named": false
-  },
-  {
-    "type": "UNTIL",
-    "named": false
-  },
-  {
-    "type": "WHILE",
-    "named": false
-  },
-  {
-    "type": "WRITE",
     "named": false
   },
   {
@@ -643,11 +1053,51 @@
     "named": false
   },
   {
+    "type": "assignment_command",
+    "named": false
+  },
+  {
+    "type": "for_downto_command",
+    "named": false
+  },
+  {
+    "type": "for_to_command",
+    "named": false
+  },
+  {
+    "type": "if_command",
+    "named": false
+  },
+  {
+    "type": "if_else_command",
+    "named": false
+  },
+  {
     "type": "num",
     "named": true
   },
   {
     "type": "pidentifier",
     "named": true
+  },
+  {
+    "type": "procedure_call_command",
+    "named": false
+  },
+  {
+    "type": "read_command",
+    "named": false
+  },
+  {
+    "type": "repeat_until_command",
+    "named": false
+  },
+  {
+    "type": "while_command",
+    "named": false
+  },
+  {
+    "type": "write_command",
+    "named": false
   }
 ]

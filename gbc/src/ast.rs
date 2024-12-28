@@ -1,24 +1,32 @@
 use crate::{
-    error::{Message, MessageSeverity},
+    error::{DisplayMessage, Message, MessageSeverity},
     program::Program,
 };
-use std::ops::Not;
-use tree_sitter::{Query, QueryCursor, Tree};
+use std::{any::Any, ops::Not};
+use tree_sitter::{Node, Tree};
 use tree_sitter_gbl::LANGUAGE;
 
 #[derive(Debug, Clone, Default)]
-pub struct AstFlags {
-    pub has_mul: bool,
-    pub has_div: bool,
-    pub has_mod: bool,
+pub struct Location(pub tree_sitter::Point, pub tree_sitter::Point);
+trait GetLocation {
+    fn get_location(&self) -> Location;
+}
+
+impl GetLocation for Node<'_> {
+    fn get_location(&self) -> Location {
+        Location(self.start_position(), self.end_position())
+    }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct Ast {
-    pub flags: AstFlags,
+    pub is_valid: bool,
+    pub has_mul: bool,
+    pub has_div: bool,
+    pub has_mod: bool,
     pub procedures: Vec<Procedure>,
     pub main_block: MainBlock,
-    pub location: (tree_sitter::Point, tree_sitter::Point),
+    pub location: Location,
 }
 
 #[derive(Debug, Clone)]
@@ -27,14 +35,14 @@ pub struct Procedure {
     pub args: Vec<ProcArgument>,
     pub declarations: Vec<Declaration>,
     pub commands: Vec<Command>,
-    pub location: (tree_sitter::Point, tree_sitter::Point),
+    pub location: Location,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct MainBlock {
     pub declarations: Vec<Declaration>,
     pub commands: Vec<Command>,
-    pub location: (tree_sitter::Point, tree_sitter::Point),
+    pub location: Location,
 }
 
 #[derive(Debug, Clone)]
@@ -42,28 +50,28 @@ pub enum Command {
     Assignment {
         identifier: Identifier,
         expression: Expression,
-        location: (tree_sitter::Point, tree_sitter::Point),
+        location: Location,
     },
     IfElse {
         condition: Condition,
         then_commands: Vec<Command>,
         else_commands: Vec<Command>,
-        location: (tree_sitter::Point, tree_sitter::Point),
+        location: Location,
     },
     If {
         condition: Condition,
         then_commands: Vec<Command>,
-        location: (tree_sitter::Point, tree_sitter::Point),
+        location: Location,
     },
     While {
         condition: Condition,
         commands: Vec<Command>,
-        location: (tree_sitter::Point, tree_sitter::Point),
+        location: Location,
     },
     Repeat {
         commands: Vec<Command>,
         condition: Condition,
-        location: (tree_sitter::Point, tree_sitter::Point),
+        location: Location,
     },
     For {
         variable: String,
@@ -71,16 +79,16 @@ pub enum Command {
         to: Value,
         direction: ForDirection,
         commands: Vec<Command>,
-        location: (tree_sitter::Point, tree_sitter::Point),
+        location: Location,
     },
     ProcedureCall {
         proc_name: String,
         arguments: Vec<Identifier>,
-        location: (tree_sitter::Point, tree_sitter::Point),
+        location: Location,
     },
     Read(Identifier),
     Write(Value),
-    HasEffect(Identifier),
+    NoOp,
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +105,8 @@ pub enum Expression {
     Multiplication(Value, Value),
     Division(Value, Value),
     Modulo(Value, Value),
+    TimesPowerTwo(Value, i64),
+    HalfTimes(Value, i64),
 }
 
 #[derive(Debug, Clone)]
@@ -134,7 +144,7 @@ pub enum Value {
 pub struct Identifier {
     pub name: String,
     pub index: Option<Either<String, i64>>,
-    pub location: (tree_sitter::Point, tree_sitter::Point),
+    pub location: Location,
 }
 
 #[derive(Debug, Clone)]
@@ -149,11 +159,11 @@ pub struct ProcArgument {
     pub is_array: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Declaration {
     pub name: String,
     pub array_size: Option<(i64, i64)>,
-    pub location: (tree_sitter::Point, tree_sitter::Point),
+    pub location: Location,
 }
 
 pub trait GenerateAst {
@@ -164,7 +174,7 @@ impl GenerateAst for Program {
     fn generate_ast(&mut self) -> Result<(), ()> {
         let mut parser = tree_sitter::Parser::new();
         if let Err(err) = parser.set_language(&LANGUAGE.into()) {
-            self.messages.push(Message::GeneralMessage {
+            self.print_message(Message::GeneralMessage {
                 severity: crate::error::MessageSeverity::FATAL,
                 message: err.to_string().to_ascii_lowercase(),
             });
@@ -173,519 +183,377 @@ impl GenerateAst for Program {
 
         let tree = parser.parse(self.source_code.clone(), None).unwrap();
 
-        let mut ast_builder = AstBuilder::new(self);
-        if let Err(err) = ast_builder.build_ast(&tree) {
-            self.messages.push(err);
+        if tree.root_node().has_error() {
+            self.print_message(Message::GeneralMessage {
+                severity: MessageSeverity::ERROR,
+                message: format!("there is a syntax error somewhere go find it !"),
+            });
+            let issue_node = rec_find_error(tree.root_node()).unwrap();
+            self.print_message(Message::CodeMessage {
+                severity: MessageSeverity::ERROR,
+                message: "try somewhere here".to_string(),
+                // location: issue_node.get_location(),
+                location: tree.root_node().get_location(),
+            });
             return Err(());
         }
-
-        Ok(())
+        self.populate_ast(tree)
     }
 }
 
-struct AstBuilder<'a> {
-    program: &'a mut Program,
-}
-
-impl<'a> AstBuilder<'a> {
-    pub fn new(prog: &'a mut Program) -> Self {
-        Self { program: prog }
+fn rec_find_error(node: Node) -> Option<Node> {
+    if node.is_error() {
+        return Some(node.clone());
     }
 
-    pub fn build_ast(&mut self, tree: &tree_sitter::Tree) -> Result<(), Message> {
-        if let Some(err) = self.find_syntax_errors(tree) {
-            return Err(err);
+    if !node.has_error() {
+        return None;
+    }
+
+    let mut walker = node.walk();
+    for child in node.children(&mut walker) {
+        if let Some(error_node) = rec_find_error(child) {
+            return Some(error_node);
         }
+    }
 
+    None
+}
+
+impl Program {
+    fn populate_ast(&mut self, tree: Tree) -> Result<(), ()> {
         let root_node = tree.root_node();
-        let mut procedures = Vec::new();
-        let mut main_block: MainBlock = MainBlock::default();
+        let location = root_node.get_location();
+        self.ast.is_valid = true;
+        self.ast.location = location;
 
-        for child in root_node.named_children(&mut root_node.walk()) {
-            match child.kind() {
-                "procedure" => {
-                    procedures.push(self.parse_procedure(&child).unwrap());
-                }
-                "main" => {
-                    main_block = self.build_main_block(&child);
-                }
-                _ => {
-                    panic!("unknown type {}", child.kind())
-                }
-            }
+        let main_node = root_node.child_by_field_name("main_program").unwrap();
+        self.populate_main(main_node);
+
+        if let Some(procedures_node) = root_node.child_by_field_name("procedures") {
+            self.populate_procedures(procedures_node);
         }
 
-        self.program.ast.main_block = main_block;
-        self.program.ast.procedures = procedures;
-
-        Ok(())
+        if self.ast.is_valid {
+            Ok(())
+        } else {
+            Err(())
+        }
     }
 
-    fn parse_procedure(&mut self, node: &tree_sitter::Node) -> Result<Procedure, String> {
-        let start = node.start_position();
-        let end = node.end_position();
+    fn populate_main(&mut self, node: Node) {
+        assert_eq!(node.kind(), "main");
 
-        let mut procedure_name = String::new();
-        let mut args = Vec::new();
-        let mut declarations = Vec::new();
-        let mut commands = Vec::new();
+        self.ast.main_block.declarations = node
+            .child_by_field_name("declarations")
+            .map(|declarations_node| self.gen_declarations(declarations_node))
+            .unwrap_or_else(Vec::new);
 
-        let mut skip_next = false;
+        self.ast.main_block.commands = node
+            .child_by_field_name("commands")
+            .map(|declarations_node| self.gen_commands(declarations_node))
+            .unwrap_or_else(Vec::new);
+    }
 
-        for child in node.named_children(&mut node.walk()) {
-            match child.kind() {
-                "proc_head" => {
-                    procedure_name = self.extract_text(&child.named_child(0).unwrap());
-                    if let Some(args_decl_node) = &child.named_child(1) {
-                        let mut cursor = args_decl_node.walk();
-                        for arg_decl_node in args_decl_node.children(&mut cursor) {
-                            if skip_next {
-                                skip_next = false;
-                                continue;
-                            }
+    fn populate_procedures(&mut self, node: Node) {
+        let proc_head_node = node.child_by_field_name("header").unwrap();
+        let name = self.get_text(proc_head_node.child_by_field_name("name").unwrap());
 
-                            match arg_decl_node.kind() {
-                                "T" => {
-                                    let id =
-                                        self.extract_text(&arg_decl_node.next_sibling().unwrap());
-                                    args.push(ProcArgument {
-                                        name: id,
-                                        is_array: true,
-                                    });
-                                    skip_next = true;
-                                }
-                                "pidentifier" => {
-                                    let id = self.extract_text(&arg_decl_node);
-                                    args.push(ProcArgument {
-                                        name: id,
-                                        is_array: false,
-                                    });
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                }
-                "declarations" => {
-                    declarations = self.build_declarations(&child);
-                }
-                "commands" => {
-                    commands = self.build_commands(&child);
-                }
-                _ => {
-                    println!("{}", child.kind())
-                }
-            }
-            for proc_arg in &args {
-                commands.push(Command::HasEffect(Identifier {
-                    name: proc_arg.name.clone(),
-                    index: None,
-                    location: (start, end),
-                }));
-            }
-        }
-        Ok(Procedure {
-            name: procedure_name,
+        let args = if let Some(args_decl_node) = proc_head_node.child_by_field_name("arguments") {
+            self.gen_args_decl(args_decl_node)
+        } else {
+            Vec::new()
+        };
+
+        let declarations = if let Some(declarations_node) = node.child_by_field_name("declarations")
+        {
+            self.gen_declarations(declarations_node)
+        } else {
+            Vec::new()
+        };
+
+        let commands = if let Some(commands_node) = node.child_by_field_name("commands") {
+            self.gen_commands(commands_node)
+        } else {
+            Vec::new()
+        };
+
+        self.ast.procedures.push(Procedure {
+            name,
             args,
             declarations,
             commands,
-            location: (start, end),
-        })
+            location: node.get_location(),
+        });
     }
 
-    fn build_main_block(&mut self, node: &tree_sitter::Node) -> MainBlock {
-        let start = node.start_position();
-        let end = node.end_position();
-        let location = (start, end);
-        let mut declarations = Vec::new();
-        let mut commands = Vec::new();
+    fn gen_declarations(&self, node: Node) -> Vec<Declaration> {
+        assert_eq!(node.kind(), "declarations");
+        node.named_children(&mut node.walk())
+            .map(|child| self.gen_declaration(child))
+            .collect()
+    }
 
-        for child in node.named_children(&mut node.walk()) {
-            match child.kind() {
-                "declarations" => {
-                    declarations = self.build_declarations(&child);
-                }
-                "commands" => {
-                    commands = self.build_commands(&child);
-                }
-                _ => {
-                    println!("unsupported {}", child.kind())
-                }
+    fn gen_commands(&self, node: Node) -> Vec<Command> {
+        assert_eq!(node.kind(), "commands");
+        node.named_children(&mut node.walk())
+            .map(|child| self.gen_command(child))
+            .collect()
+    }
+
+    fn gen_command(&self, node: Node) -> Command {
+        assert_eq!(node.kind(), "command");
+
+        let actual_command = node.child(0).unwrap();
+
+        match actual_command.kind() {
+            "assignment_command" => return self.gen_assignment(node),
+            "if_else_command" => return self.gen_if_else(node),
+            "if_command" => return self.gen_if(node),
+            "while_command" => return self.gen_while(node),
+            "repeat_until_command" => return self.gen_repeat(node),
+            "for_to_command" => return self.gen_for_to(node),
+            "for_downto_command" => return self.gen_for_downto(node),
+            "procedure_call_command" => return self.gen_proc_call(node),
+            "read_command" => return self.gen_read(node),
+            "write_command" => return self.gen_write(node),
+            _ => {
+                unreachable!()
             }
         }
-
-        MainBlock {
-            declarations,
-            commands,
-            location,
-        }
     }
-    fn build_commands(&mut self, node: &tree_sitter::Node) -> Vec<Command> {
-        let mut commands = Vec::new();
-        for child in node.children(&mut node.walk()) {
-            match child.kind() {
-                "command" => {
-                    let cmd = self.parse_command(&child).unwrap();
 
-                    if let Command::ProcedureCall {
-                        proc_name,
-                        arguments,
-                        location: l,
-                    } = cmd.clone()
-                    {
-                        for arg in arguments {
-                            commands.push(Command::HasEffect(Identifier {
-                                name: arg.name,
-                                index: None,
-                                location: l.clone(),
-                            }));
-                        }
-                    }
-                    commands.push(cmd);
-                }
-                _ => {}
+    fn gen_expression(&self, node: Node) -> Expression {
+        if let Some(val) = node.child_by_field_name("value") {
+            return Expression::Value(self.gen_value(val));
+        }
+        let left = self.gen_value(node.child_by_field_name("left").unwrap());
+        let op = self.get_text(node.child_by_field_name("op").unwrap());
+        let right = self.gen_value(node.child_by_field_name("right").unwrap());
+
+        match op.as_str().trim() {
+            "+" => Expression::Addition(left, right),
+            "-" => Expression::Subtraction(left, right),
+            "*" => Expression::Multiplication(left, right),
+            "/" => Expression::Division(left, right),
+            "%" => Expression::Modulo(left, right),
+            _ => {
+                unreachable!()
             }
         }
-        commands
     }
 
-    fn parse_command(&mut self, node: &tree_sitter::Node) -> Result<Command, String> {
-        let start = node.start_position();
-        let end = node.end_position();
-        let location = (start, end);
-        for child in node.children(&mut node.walk()) {
-            match child.kind() {
-                _ if self.is_assignment_command(&child) => {
-                    let identifier = self.parse_identifier(&child).unwrap();
-                    let expression = self
-                        .parse_expression(&child.next_sibling().unwrap().next_sibling().unwrap())
-                        .unwrap();
-                    return Ok(Command::Assignment {
-                        identifier,
-                        expression,
-                        location,
-                    });
-                }
-                "proc_call" => {
-                    let proc_name = self.extract_text(&child.named_child(0).unwrap());
+    fn gen_condition(&self, node: Node) -> Condition {
+        let left = self.gen_value(node.child_by_field_name("left").unwrap());
+        let op = self.get_text(node.child_by_field_name("op").unwrap());
+        let right = self.gen_value(node.child_by_field_name("right").unwrap());
 
-                    let mut arguments: Vec<Identifier> = vec![];
-                    if let Some(args_node) = child.named_child(1) {
-                        for arg_node in args_node.children(&mut args_node.walk()) {
-                            if arg_node.kind() == "pidentifier" {
-                                arguments.push(Identifier {
-                                    name: self.extract_text(&arg_node),
-                                    index: None,
-                                    location,
-                                });
-                            }
-                        }
-                    }
-
-                    return Ok(Command::ProcedureCall {
-                        proc_name,
-                        arguments: arguments,
-                        location,
-                    });
-                }
-                "WHILE" => {
-                    let condition_node = child.next_sibling().unwrap();
-                    let condition = self.parse_condition(&condition_node).unwrap();
-
-                    let commands_node = condition_node.next_named_sibling().unwrap();
-                    let commands = self.build_commands(&commands_node);
-
-                    return Ok(Command::While {
-                        condition: condition,
-                        commands: commands,
-                        location,
-                    });
-                }
-                "REPEAT" => {
-                    let commands_node = child.next_named_sibling().unwrap();
-                    let commands = self.build_commands(&commands_node);
-
-                    let condition_node = commands_node.next_named_sibling().unwrap();
-                    let condition = self.parse_condition(&condition_node).unwrap();
-
-                    return Ok(Command::Repeat {
-                        condition: condition,
-                        commands: commands,
-                        location,
-                    });
-                }
-                "FOR" => {
-                    let var_node = child.next_named_sibling().unwrap();
-                    let var = self.extract_text(&var_node);
-
-                    let direction: ForDirection;
-
-                    let from_node = var_node.next_named_sibling().unwrap();
-                    let from = self.parse_value(&from_node).unwrap();
-
-                    if from_node.next_sibling().unwrap().kind() == "TO" {
-                        direction = ForDirection::Ascending;
-                    } else if from_node.next_sibling().unwrap().kind() == "DOWNTO" {
-                        direction = ForDirection::Descending;
-                    } else {
-                        return Err(format!(
-                            "Unsupported for direction {}",
-                            from_node.next_sibling().unwrap().kind(),
-                        ));
-                    }
-
-                    let to_node = from_node.next_named_sibling().unwrap();
-                    let to = self.parse_value(&to_node).unwrap();
-
-                    let commands_node = to_node.next_named_sibling().unwrap();
-                    let commands = self.build_commands(&commands_node);
-
-                    return Ok(Command::For {
-                        variable: var,
-                        from: from,
-                        to: to,
-                        direction: direction,
-                        commands: commands,
-                        location,
-                    });
-                }
-                "IF" => {
-                    let condition_node = child.next_sibling().unwrap();
-                    let condition = self.parse_condition(&condition_node).unwrap();
-
-                    let then_node = condition_node
-                        .next_sibling()
-                        .unwrap()
-                        .next_sibling()
-                        .unwrap();
-                    let then_commands = self.build_commands(&then_node);
-
-                    if let Some(else_node) = then_node.next_sibling().unwrap().next_sibling() {
-                        let else_commands = self.build_commands(&else_node);
-                        return Ok(Command::IfElse {
-                            condition: condition,
-                            then_commands: then_commands,
-                            else_commands: else_commands,
-                            location,
-                        });
-                    } else {
-                        return Ok(Command::If {
-                            condition: condition,
-                            then_commands: then_commands,
-                            location,
-                        });
-                    }
-                }
-                "READ" => {
-                    let identifier = self
-                        .parse_identifier(&child.next_sibling().unwrap())
-                        .unwrap();
-                    return Ok(Command::Read(identifier));
-                }
-                "WRITE" => {
-                    let value = self.parse_value(&child.next_sibling().unwrap()).unwrap();
-                    return Ok(Command::Write(value));
-                }
-                _ => {
-                    return Err(format!("unsupported {} {}", child.kind(), self.extract_text(node)));
-                }
+        match op.as_str() {
+            "=" => Condition::Equal(left, right),
+            "!=" => Condition::NotEqual(left, right),
+            ">" => Condition::GreaterThan(left, right),
+            "<" => Condition::LessThan(left, right),
+            ">=" => Condition::GreaterOrEqual(left, right),
+            "<=" => Condition::LessOrEqual(left, right),
+            _ => {
+                unreachable!()
             }
         }
-        return Err(format!("unsupported {}", node.kind()));
     }
 
-    fn parse_condition(&self, node: &tree_sitter::Node) -> Result<Condition, String> {
-        assert_eq!(node.kind(), "condition");
+    fn gen_assignment(&self, node: Node) -> Command {
+        assert_eq!(node.kind(), "command");
 
-        let left_side = self.parse_value(&node.child(0).unwrap()).unwrap();
-        let right_side = self.parse_value(&node.child(2).unwrap()).unwrap();
-
-        let operator = node
-            .child(1)
-            .and_then(|op| op.utf8_text(self.program.source_code.as_bytes()).ok())
-            .ok_or("No operator found")?;
-
-        match operator {
-            "=" => Ok(Condition::Equal(left_side, right_side)),
-            "!=" => Ok(Condition::NotEqual(left_side, right_side)),
-            ">" => Ok(Condition::GreaterThan(left_side, right_side)),
-            "<" => Ok(Condition::LessThan(left_side, right_side)),
-            ">=" => Ok(Condition::GreaterOrEqual(left_side, right_side)),
-            "<=" => Ok(Condition::LessOrEqual(left_side, right_side)),
-            _ => Err(format!("Unknown condition operator: {}", operator)),
+        Command::Assignment {
+            identifier: self.gen_identifier(node.child_by_field_name("target").unwrap()),
+            expression: self.gen_expression(node.child_by_field_name("expression").unwrap()),
+            location: node.get_location(),
         }
     }
 
-    fn parse_expression(&mut self, node: &tree_sitter::Node) -> Result<Expression, String> {
-        assert_eq!(node.kind(), "expression");
+    fn gen_if_else(&self, node: Node) -> Command {
+        assert_eq!(node.kind(), "command");
+        Command::IfElse {
+            condition: self.gen_condition(node.child_by_field_name("condition").unwrap()),
+            then_commands: self.gen_commands(node.child_by_field_name("then_branch").unwrap()),
+            else_commands: self.gen_commands(node.child_by_field_name("else_branch").unwrap()),
+            location: node.get_location(),
+        }
+    }
 
-        let child = node.child(0).ok_or("Empty expression")?;
+    fn gen_if(&self, node: Node) -> Command {
+        assert_eq!(node.kind(), "command");
+        Command::If {
+            condition: self.gen_condition(node.child_by_field_name("condition").unwrap()),
+            then_commands: self.gen_commands(node.child_by_field_name("then_branch").unwrap()),
+            location: node.get_location(),
+        }
+    }
 
-        let first_val = self.parse_value(&child)?;
+    fn gen_while(&self, node: Node) -> Command {
+        assert_eq!(node.kind(), "command");
+        Command::While {
+            condition: self.gen_condition(node.child_by_field_name("condition").unwrap()),
+            commands: self.gen_commands(node.child_by_field_name("body").unwrap()),
+            location: node.get_location(),
+        }
+    }
 
-        if let Some(op) = child.next_sibling() {
-            let second_val = self.parse_value(&op.next_sibling().unwrap()).unwrap();
-            match op.kind() {
-                "+" => Ok(Expression::Addition(first_val, second_val)),
-                "-" => Ok(Expression::Subtraction(first_val, second_val)),
-                "*" => {
-                    self.program.ast.flags.has_mul = true;
-                    Ok(Expression::Multiplication(first_val, second_val))
-                }
-                "/" => {
-                    self.program.ast.flags.has_div = true;
-                    Ok(Expression::Division(first_val, second_val))
-                }
-                "%" => {
-                    self.program.ast.flags.has_mod = true;
-                    Ok(Expression::Modulo(first_val, second_val))
-                }
+    fn gen_repeat(&self, node: Node) -> Command {
+        assert_eq!(node.kind(), "command");
+        Command::Repeat {
+            commands: self.gen_commands(node.child_by_field_name("body").unwrap()),
+            condition: self.gen_condition(node.child_by_field_name("condition").unwrap()),
+            location: node.get_location(),
+        }
+    }
 
+    fn gen_for_to(&self, node: Node) -> Command {
+        assert_eq!(node.kind(), "command");
+        Command::For {
+            variable: self.get_text(node.child_by_field_name("variable").unwrap()),
+            from: self.gen_value(node.child_by_field_name("start").unwrap()),
+            to: self.gen_value(node.child_by_field_name("end").unwrap()),
+            direction: ForDirection::Ascending,
+            commands: self.gen_commands(node.child_by_field_name("body").unwrap()),
+            location: node.get_location(),
+        }
+    }
+
+    fn gen_for_downto(&self, node: Node) -> Command {
+        assert_eq!(node.kind(), "command");
+        Command::For {
+            variable: self.get_text(node.child_by_field_name("variable").unwrap()),
+            from: self.gen_value(node.child_by_field_name("start").unwrap()),
+            to: self.gen_value(node.child_by_field_name("end").unwrap()),
+            direction: ForDirection::Descending,
+            commands: self.gen_commands(node.child_by_field_name("body").unwrap()),
+            location: node.get_location(),
+        }
+    }
+
+    fn gen_proc_call(&self, node: Node) -> Command {
+        assert_eq!(node.kind(), "command");
+
+        let proc_call_node = node.child_by_field_name("procedure_call").unwrap();
+
+        let args = if let Some(args_node) = proc_call_node.child_by_field_name("arguments") {
+            self.gen_args(args_node)
+        } else {
+            vec![]
+        };
+
+        Command::ProcedureCall {
+            proc_name: self.get_text(proc_call_node.child_by_field_name("name").unwrap()),
+            arguments: args,
+            location: node.get_location(),
+        }
+    }
+
+    fn gen_read(&self, node: Node) -> Command {
+        assert_eq!(node.kind(), "command");
+        Command::Read(self.gen_identifier(node.child_by_field_name("target").unwrap()))
+    }
+
+    fn gen_write(&self, node: Node) -> Command {
+        assert_eq!(node.kind(), "command");
+        Command::Write(self.gen_value(node.child_by_field_name("value").unwrap()))
+    }
+
+    fn gen_args(&self, node: Node) -> Vec<Identifier> {
+        assert_eq!(node.kind(), "args");
+        node.named_children(&mut node.walk())
+            .map(|child| Identifier {
+                name: self.get_text(child),
+                index: None,
+                location: child.get_location(),
+            })
+            .collect()
+    }
+
+    fn gen_identifier(&self, node: Node) -> Identifier {
+        let name = self.get_text(node.child_by_field_name("name").unwrap());
+
+        let index = if let Some(index_node) = node.child_by_field_name("index") {
+            match index_node.kind() {
+                "num" => Some(Either::Right(self.get_text(index_node).parse().unwrap())),
+                "pidentifier" => Some(Either::Left(self.get_text(index_node))),
                 _ => {
-                    return Err(format!("unsupported expression {}", op.kind()));
+                    unreachable!()
                 }
             }
         } else {
-            return Ok(Expression::Value(first_val));
-        }
-    }
+            None
+        };
 
-    fn build_declarations(&self, node: &tree_sitter::Node) -> Vec<Declaration> {
-        let mut declarations = Vec::new();
-
-        for child in node.children(&mut node.walk()) {
-            match child.kind() {
-                "declaration" => {
-                    declarations.push(self.build_declaration(&child).unwrap());
-                }
-                _ => {}
-            }
-        }
-
-        declarations
-    }
-
-    fn build_declaration(&self, node: &tree_sitter::Node) -> Option<Declaration> {
-        for child in node.children(&mut node.walk()) {
-            let start = child.start_position();
-            let end = child.end_position();
-            let location = (start, end);
-            match child.kind() {
-                "pidentifier" => {
-                    if let Some(next_sibling) = child.next_sibling() {
-                        if next_sibling.kind() == "[" {
-                            if let Some(first_num) = next_sibling.next_sibling() {
-                                let start: i64 = self.extract_text(&first_num).parse().unwrap();
-                                let end: i64 = self
-                                    .extract_text(
-                                        &first_num.next_sibling().unwrap().next_sibling().unwrap(),
-                                    )
-                                    .parse()
-                                    .unwrap();
-                                return Some(Declaration {
-                                    name: self.extract_text(&child),
-                                    array_size: Some((start, end)),
-                                    location: location,
-                                });
-                            }
-                        }
-                    }
-
-                    return Some(Declaration {
-                        name: self.extract_text(&child),
-                        array_size: None,
-                        location: location,
-                    });
-                }
-                _ => {
-                    panic!("{}", child.kind());
-                }
-            }
-        }
-        None
-    }
-
-    fn parse_value(&self, node: &tree_sitter::Node) -> Result<Value, String> {
-        assert_eq!(node.kind(), "value");
-        for child in node.children(&mut node.walk()) {
-            match child.kind() {
-                "identifier" => {
-                    let identifier = self.parse_identifier(&child).unwrap();
-                    return Ok(Value::Identifier(identifier));
-                }
-                "num" => {
-                    let num = self
-                        .extract_text(&child)
-                        .parse::<i64>()
-                        .map_err(|_| "Invalid numeric index")?;
-                    return Ok(Value::Number(num));
-                }
-                _ => {
-                    return Err(format!("Unsupported value type: {}", child.kind(),));
-                }
-            }
-        }
-        Err(format!(""))
-    }
-
-    fn parse_identifier(&self, node: &tree_sitter::Node) -> Result<Identifier, String> {
-        let start = node.start_position();
-        let end = node.start_position();
-        let mut name = String::new();
-        let mut index = None;
-        for child in node.named_children(&mut node.walk()) {
-            match child.kind() {
-                "pidentifier" => {
-                    if name.is_empty() {
-                        name = self.extract_text(&child);
-                    } else {
-                        index = Some(Either::Left(self.extract_text(&child)));
-                    }
-                }
-                "num" => {
-                    let num = self
-                        .extract_text(&child)
-                        .parse::<i64>()
-                        .map_err(|_| "Invalid numeric index")?;
-                    index = Some(Either::Right(num));
-                }
-                _ => {
-                    return Err(format!("Unsupported {}", child.kind()));
-                }
-            }
-        }
-
-        Ok(Identifier {
+        Identifier {
             name,
             index,
-            location: (start, end),
-        })
-    }
-
-    fn is_assignment_command(&self, node: &tree_sitter::Node) -> bool {
-        if node.kind() != "identifier" {
-            return false;
+            location: node.get_location(),
         }
-
-        node.next_sibling()
-            .map(|op| self.extract_text(&op) == ":=")
-            .unwrap_or(false)
     }
 
-    fn extract_text(&self, node: &tree_sitter::Node) -> String {
-        node.utf8_text(self.program.source_code.as_bytes())
+    fn gen_value(&self, node: Node) -> Value {
+        if let Some(num_node) = node.child_by_field_name("number") {
+            Value::Number(self.get_text(num_node).parse().unwrap())
+        } else if let Some(identifier_node) = node.child_by_field_name("identifier") {
+            Value::Identifier(self.gen_identifier(identifier_node))
+        } else {
+            {
+                unreachable!()
+            }
+        }
+    }
+
+    fn gen_declaration(&self, node: Node) -> Declaration {
+        assert_eq!(node.kind(), "declaration");
+
+        let name = self.get_text(node.child_by_field_name("identifier").unwrap());
+
+        let location = node.get_location();
+
+        let size = node
+            .child_by_field_name("start")
+            .zip(node.child_by_field_name("end"))
+            .map(|(start, end)| {
+                (
+                    self.get_text(start).parse().unwrap(),
+                    self.get_text(end).parse().unwrap(),
+                )
+            });
+
+        Declaration {
+            name,
+            array_size: size,
+            location,
+        }
+    }
+
+    fn gen_args_decl(&self, node: Node) -> Vec<ProcArgument> {
+        assert_eq!(node.kind(), "args_decl");
+
+        let args = node
+            .named_children(&mut node.walk())
+            .map(|child| {
+                let is_array = if let Some(_) = child.child_by_field_name("T") {
+                    true
+                } else {
+                    false
+                };
+
+                ProcArgument {
+                    name: self.get_text(child.child_by_field_name("name").unwrap()),
+                    is_array,
+                }
+            })
+            .collect();
+
+        args
+    }
+
+    fn get_text(&self, node: Node) -> String {
+        node.utf8_text(&self.source_code.as_bytes())
             .unwrap()
             .to_string()
-    }
-
-    fn find_syntax_errors(&mut self, tree: &Tree) -> Option<Message> {
-        if tree.root_node().has_error() {
-            return Some(Message::GeneralMessage {
-                severity: MessageSeverity::ERROR,
-                message: format!("there is some syntax error somewhere go find it!"),
-            });
-        }
-        println!("{}", tree.root_node());
-        None
     }
 }

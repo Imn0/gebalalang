@@ -1,48 +1,34 @@
 use std::{env, process::exit};
 
 use ast::GenerateAst;
-use clap::{self, Parser as _};
 
 mod program;
-use error::DisplayError;
+use cli::{parse_args, CliArgs};
 use program::Program;
 mod ast;
 mod error;
 
-#[derive(clap::Parser, Debug)]
-#[command(version = "1.0", about = "", long_about = "")]
-pub struct CliArgs {
-    #[arg(help = "Source code file.")]
-    pub input: String,
+mod cli;
 
-    #[arg(short, long, default_value = "a.mr", help = "Compiled assembly file.")]
-    pub out: String,
+macro_rules! try_or_exit {
+    ($expr:expr) => {
+        if let Err(_) = $expr {
+            std::process::exit(1);
+        }
+    };
 }
 
 fn main() {
-    let args = CliArgs::parse();
+    let mut args = CliArgs::default();
+
+    try_or_exit!(parse_args(env::args().collect(), &mut args));
 
     let mut p = Program::default();
 
-    if let Err(_) = p.load_code(args.input) {
-        let _ = p.display_error();
-        exit(1);
-    }
-
-    if let Err(_) = p.generate_ast() {
-        let _ = p.display_error();
-        exit(1);
-    }
-
-    // optimize_ast();
-
-    // generate_ir();
-    // generate_gvm();
-    
-    if let Err(_) = p.save_compiled(&args.out) {
-        let _ = p.display_error();
-        exit(1);
-    }
+    try_or_exit!(p.load_code(args.input_file));
+    try_or_exit!(p.generate_ast());
+    println!("{:#?}", p.ast);
+    try_or_exit!(p.save_compiled(&args.output_file));
 
     exit(0);
 }
