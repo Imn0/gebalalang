@@ -1,12 +1,5 @@
 use core::fmt;
-use std::{
-    cmp::{max, min},
-    io::{self, Write},
-    process::exit,
-    vec,
-};
-
-use tree_sitter::Point;
+use std::process::exit;
 
 use crate::{ast::Location, Program};
 
@@ -51,35 +44,6 @@ pub enum Message<'a> {
         message: &'a str,
         location: Location,
     },
-}
-
-impl<'a> fmt::Display for Message<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Message::CodeMessage {
-                severity,
-                message,
-                location,
-            } => {
-                writeln!(
-                    f,
-                    "GBC: {}{}\x1b[m{}\x1b[0m",
-                    severity.color_code(),
-                    severity.prefix(),
-                    message
-                )
-            }
-            Message::GeneralMessage { severity, message } => {
-                writeln!(
-                    f,
-                    "GBC: {}{}\x1b[m{}\x1b[0m",
-                    severity.color_code(),
-                    severity.prefix(),
-                    message
-                )
-            }
-        }
-    }
 }
 
 pub trait DisplayMessage {
