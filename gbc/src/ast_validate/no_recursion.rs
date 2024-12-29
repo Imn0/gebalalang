@@ -1,15 +1,16 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{ast::{Command, Location}, error::{DisplayMessage, Message, MessageSeverity}};
+use crate::{
+    ast::{Command, Location},
+    error::{DisplayMessage, Message, MessageSeverity},
+    program::Program,
+};
 
 use super::{NoRecursiveCalls, Validator};
 
-
-
-
-impl<'a> Validator for NoRecursiveCalls<'a> {
-    fn check(&self) -> Result<(), ()> {
-        if self.detect_recursive_calls() {
+impl Validator for NoRecursiveCalls {
+    fn check(&self, prog: &Program) -> Result<(), ()> {
+        if self.detect_recursive_calls(prog) {
             return Err(());
         } else {
             return Ok(());
@@ -17,10 +18,10 @@ impl<'a> Validator for NoRecursiveCalls<'a> {
     }
 }
 
-impl<'a> NoRecursiveCalls<'a> {
-    pub fn detect_recursive_calls(&self) -> bool {
-        let call_graph = self.build_call_graph();
-        let call_locations = self.build_call_locations();
+impl NoRecursiveCalls {
+    pub fn detect_recursive_calls(&self, prog: &Program) -> bool {
+        let call_graph = self.build_call_graph(prog);
+        let call_locations = self.build_call_locations(prog);
         let mut recursive_calls = Vec::new();
 
         #[derive(Debug, Clone)]
@@ -30,7 +31,7 @@ impl<'a> NoRecursiveCalls<'a> {
             pub location: Location,
         }
 
-        for (_, procedure) in &self.program.ast.procedures {
+        for (_, procedure) in &prog.ast.procedures {
             let mut visited_procedures = HashSet::new();
             if self.is_recursive(&call_graph, &procedure.name, &mut visited_procedures) {
                 let recursive_path: Vec<String> = visited_procedures.into_iter().collect();
@@ -55,7 +56,7 @@ impl<'a> NoRecursiveCalls<'a> {
             return false;
         }
 
-        self.program.print_message(Message::CodeMessage {
+        prog.print_message(Message::CodeMessage {
             severity: MessageSeverity::ERROR,
             message: format!(
                 "recursive calls are not allowed {} : [{}]",
@@ -68,10 +69,10 @@ impl<'a> NoRecursiveCalls<'a> {
 
         return true;
     }
-    fn build_call_graph(&self) -> HashMap<String, HashSet<String>> {
+    fn build_call_graph(&self, prog: &Program) -> HashMap<String, HashSet<String>> {
         let mut graph = HashMap::new();
 
-        for (_, procedure) in &self.program.ast.procedures {
+        for (_, procedure) in &prog.ast.procedures {
             graph
                 .entry(procedure.name.clone())
                 .or_insert_with(HashSet::new);
@@ -83,10 +84,10 @@ impl<'a> NoRecursiveCalls<'a> {
         return graph;
     }
 
-    fn build_call_locations(&self) -> HashMap<(String, String), Location> {
+    fn build_call_locations(&self, prog: &Program) -> HashMap<(String, String), Location> {
         let mut locations = HashMap::new();
 
-        for (_, procedure) in &self.program.ast.procedures {
+        for (_, procedure) in &prog.ast.procedures {
             self.record_call_locations(&procedure.name, &procedure.commands, &mut locations);
         }
 

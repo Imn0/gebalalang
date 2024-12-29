@@ -9,6 +9,7 @@ mod ast_optimize;
 mod ast_validate;
 mod cli;
 mod error;
+mod tests;
 
 macro_rules! try_or_exit {
     ($expr:expr) => {
@@ -35,9 +36,9 @@ fn main() {
     try_or_exit!(p.configure_args(&args));
     try_or_exit!(p.load_code(args.input_file));
     try_or_exit!(p.ast_generate());
-    // println!("{:#?}", p.ast);
     try_or_exit!(p.ast_validate());
     try_or_exit!(p.ast_optimize());
+    println!("{:#?}", p.ast);
     try_or_exit!(p.save_compiled(&args.output_file));
 
     exit(0);
