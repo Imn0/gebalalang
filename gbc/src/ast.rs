@@ -1,5 +1,5 @@
 use crate::{
-    error::{DisplayMessage, Message, MessageSeverity},
+    message::{DisplayMessage, Message, MessageSeverity},
     program::Program,
 };
 
@@ -170,7 +170,7 @@ impl Program {
         let mut parser = tree_sitter::Parser::new();
         if let Err(err) = parser.set_language(&LANGUAGE.into()) {
             self.print_message(Message::GeneralMessage {
-                severity: crate::error::MessageSeverity::FATAL,
+                severity: crate::message::MessageSeverity::FATAL,
                 message: &err.to_string().to_ascii_lowercase(),
             });
             return Err(());

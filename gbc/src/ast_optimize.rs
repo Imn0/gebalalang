@@ -1,4 +1,4 @@
-use crate::{ast::Ast, program::Program};
+use crate::program::Program;
 
 mod normalize;
 
@@ -10,7 +10,6 @@ struct Normalize;
 
 impl Program {
     pub fn ast_optimize(&mut self) -> Result<(), ()> {
-        
         let mut passes = vec![Normalize];
 
         for o in &mut passes {

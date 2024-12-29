@@ -1,4 +1,3 @@
-use core::fmt;
 use std::process::exit;
 
 use crate::{ast::Location, Program};
@@ -46,11 +45,11 @@ pub enum Message<'a> {
     },
 }
 
-pub trait DisplayMessage {
+pub trait DisplayMessage<'a> {
     fn print_message(&self, message: Message);
 }
 
-impl DisplayMessage for Program {
+impl DisplayMessage<'_> for Program {
     fn print_message(&self, message: Message) {
         if self.config.verbose {
             let severity = match message {

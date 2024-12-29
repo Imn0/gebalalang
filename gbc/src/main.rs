@@ -1,14 +1,20 @@
-use std::{env, process::exit};
+use std::process::exit;
+use clap::Parser;
 
 mod program;
-use clap::Parser;
 use cli::CliArgs;
 use program::Program;
 mod ast;
 mod ast_optimize;
 mod ast_validate;
 mod cli;
-mod error;
+mod code_gen;
+mod targets;
+use targets::Targets;
+
+
+
+mod message;
 mod tests;
 
 macro_rules! try_or_exit {
@@ -38,7 +44,9 @@ fn main() {
     try_or_exit!(p.ast_generate());
     try_or_exit!(p.ast_validate());
     try_or_exit!(p.ast_optimize());
-    println!("{:#?}", p.ast);
+    try_or_exit!(p.gen_ir());
+    // println!("{:#?}", p.ast);
+    try_or_exit!(p.compile_to_target(Targets::GVM));
     try_or_exit!(p.save_compiled(&args.output_file));
 
     exit(0);

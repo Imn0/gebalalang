@@ -2,24 +2,20 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     ast::{Command, Location},
-    error::{DisplayMessage, Message, MessageSeverity},
+    message::{DisplayMessage, Message, MessageSeverity},
     program::Program,
 };
 
 use super::{NoRecursiveCalls, Validator};
 
-impl Validator for NoRecursiveCalls {
-    fn check(&self, prog: &Program) -> Result<(), ()> {
-        if self.detect_recursive_calls(prog) {
-            return Err(());
-        } else {
-            return Ok(());
-        }
-    }
-}
 
+
+/**
+ *   Can be used to detect recursion for procedures defined after
+ *   the caller procedure  
+ */
 impl NoRecursiveCalls {
-    pub fn detect_recursive_calls(&self, prog: &Program) -> bool {
+    pub fn detect_recursive_calls(&self, prog: &Program) -> Result<(), ()> {
         let call_graph = self.build_call_graph(prog);
         let call_locations = self.build_call_locations(prog);
         let mut recursive_calls = Vec::new();
@@ -53,7 +49,7 @@ impl NoRecursiveCalls {
         }
 
         if recursive_calls.len() == 0 {
-            return false;
+            return Ok(());
         }
 
         prog.print_message(Message::CodeMessage {
@@ -67,7 +63,7 @@ impl NoRecursiveCalls {
             location: recursive_calls[0].location.clone(),
         });
 
-        return true;
+        return Err(());
     }
     fn build_call_graph(&self, prog: &Program) -> HashMap<String, HashSet<String>> {
         let mut graph = HashMap::new();

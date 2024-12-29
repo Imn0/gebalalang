@@ -1,5 +1,6 @@
 use crate::ast::Ast;
-use crate::error::{DisplayMessage, Message, MessageSeverity};
+use crate::code_gen::CodeGenerator;
+use crate::message::{DisplayMessage, Message, MessageSeverity};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 
@@ -11,12 +12,23 @@ pub struct Program {
 
     pub config: Config,
 
+    pub code_gen: CodeGenerator,
+
     pub ast: Ast,
 }
 
-#[derive(Default)]
 pub struct Config {
     pub verbose: bool,
+    pub werror: bool
+}
+
+impl  Default for Config {
+    fn default() -> Self {
+        Config{
+            verbose: false, 
+            werror: true
+        }
+    }    
 }
 
 impl Program {
