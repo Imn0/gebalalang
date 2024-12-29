@@ -30,7 +30,10 @@ impl Default for CodeGenerator {
 
 impl CodeGenerator {
     pub fn generate_asm(&mut self, ast: &Ast) {
-        let mut main_jump = false;
+
+        //TODO FIX MUL etc
+        // allocate all proc info first then gen main to avoid first jump 
+        let mut main_jump = true;
 
         if ast.procedures.len() > 0 {
             main_jump = true;

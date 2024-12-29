@@ -17,11 +17,14 @@ pub struct CliArgs {
 
     #[arg(long, action = clap::ArgAction::SetTrue, help="Verbose error logging")]
     pub verbose: bool,
+    
+    #[arg(long, action = clap::ArgAction::SetTrue, help="Use separate namesapces for variable and procedure names")]
+    pub variable_separation: bool,
 
     #[arg(short, long = "unsafe", action = clap::ArgAction::SetTrue, help="Allows for udefined access")]
     pub _unsafe: bool,
 
-    #[arg(long, action = clap::ArgAction::SetTrue)]
+    #[arg(long, action = clap::ArgAction::SetTrue, hide=true)]
     pub i_know_what_im_doing: bool,
 }
 
@@ -35,6 +38,7 @@ impl Program {
             return Err(());
         }
 
+        self.config.procedure_separate_namespace = cli.variable_separation;
         
         Ok(())
     }

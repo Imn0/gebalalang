@@ -27,8 +27,8 @@ struct ValidateInfo {
 
 #[derive(Clone)]
 struct ProcedureInfo {
-    code_location: usize,
     args: Vec<bool>,
+    location: Location,
 }
 
 pub struct GeneratorValidator {
@@ -40,6 +40,7 @@ pub struct GeneratorValidator {
     current_scope: String,
     has_warnings: bool,
     has_errors: bool,
+    global_scope_name: String,
 }
 
 impl GeneratorValidator {
@@ -53,11 +54,16 @@ impl GeneratorValidator {
             has_errors: false,
             has_warnings: false,
             messages: vec![],
+            global_scope_name: "".to_owned(),
         }
     }
 
     pub fn validate(&mut self, prog: &Program) -> Result<(), ()> {
         let werror = prog.config.werror;
+
+        if prog.config.procedure_separate_namespace {
+            self.global_scope_name = "MAIN::".to_owned();
+        }
 
         self.generate_asm(&prog.ast);
 
@@ -167,16 +173,21 @@ impl GeneratorValidator {
         if let Some(loc) = self.symbols.get(&scoped_name) {
             return Ok(loc.clone());
         } else {
-            return Err(format!("Variable {} not declared in this scope.", name));
+            return Err(format!("'{}' not declared in this scope", name));
         }
     }
 
     fn get_variable_global_scope(&self, name: &str) -> Result<SymbolLocation, String> {
-        if let Some(loc) = self.symbols.get(name) {
+        let g_name = self.variable_global_scope_name(name);
+        if let Some(loc) = self.symbols.get(&g_name) {
             return Ok(loc.clone());
         } else {
-            return Err(format!("Variable {} not declared in this scope.", name));
+            return Err(format!("'{}' not declared in this scope", name));
         }
+    }
+
+    fn variable_global_scope_name(&self, name: &str) -> String {
+        return format!("{}{}", self.global_scope_name, name);
     }
 
     fn set_to_initialized_scoped(&mut self, name: &str) {
@@ -185,7 +196,9 @@ impl GeneratorValidator {
     }
 
     fn set_to_initialized_global(&mut self, name: &str) {
-        if let Some(loc) = self.symbols.get_mut(name) {
+        let g_name = self.variable_global_scope_name(name);
+
+        if let Some(loc) = self.symbols.get_mut(&g_name) {
             loc.initialized = true;
         }
     }
@@ -206,7 +219,11 @@ impl GeneratorValidator {
         return self.next_memory_slot - 1;
     }
 
-    fn allocate_arg(&mut self, name: String, is_array: bool) {
+    fn allocate_arg(&mut self, name: String, is_array: bool) -> Result<(), String> {
+        if self.procedures.contains_key(&name) {
+            return Err(format!("there already is a procedure named {}", name));
+        }
+
         let scoped_name = self.current_scope.clone() + &name;
 
         self.symbols.insert(
@@ -221,6 +238,7 @@ impl GeneratorValidator {
             },
         );
         self.next_memory_slot += 1;
+        Ok(())
     }
 
     fn allocate_variable_global(
@@ -231,8 +249,9 @@ impl GeneratorValidator {
         is_pointer: bool,
         read_only: bool,
     ) -> Result<usize, String> {
-        if self.symbols.contains_key(&name) {
-            return Err(format!("Variable {} already defined", name.clone()));
+        let g_name = self.variable_global_scope_name(&name);
+        if self.symbols.contains_key(&g_name) {
+            return Err(format!("'{}' already defined", name.clone()));
         }
 
         let mem_slot = self.next_memory_slot;
@@ -311,7 +330,7 @@ impl GeneratorValidator {
         }
 
         return Err(format!(
-            "Cant allocate array with dimensions {}:{}",
+            "cannot allocate array with dimensions {}:{}",
             left, right
         ));
     }
@@ -331,6 +350,10 @@ impl GeneratorValidator {
         is_pointer: bool,
         read_only: bool,
     ) -> Result<usize, String> {
+        if self.procedures.contains_key(&name) {
+            return Err(format!("there already is a procedure named {}", name));
+        }
+
         let scoped_name = self.current_scope.clone() + &name;
         return self.allocate_variable_global(scoped_name, left, right, is_pointer, read_only);
     }
@@ -345,10 +368,7 @@ impl GeneratorValidator {
                     Ok(loc) => {
                         if !loc.initialized {
                             self.add_message(ValidateInfo {
-                                message: format!(
-                                    "Usage of not initialized variable {}.",
-                                    ident.name
-                                ),
+                                message: format!("Usage of not initialized '{}'.", ident.name),
                                 location: ident.location.clone(),
                                 severity: MessageSeverity::WARNING,
                             });
@@ -372,7 +392,7 @@ impl GeneratorValidator {
                                 base_loc = _base_loc;
                             } else {
                                 self.add_message(ValidateInfo {
-                                    message: format!("Unknown variable {}.", ident.name),
+                                    message: format!("Unknown '{}'.", ident.name),
                                     location: ident.location.clone(),
                                     severity: MessageSeverity::ERROR,
                                 });
@@ -391,7 +411,7 @@ impl GeneratorValidator {
                                 idx_loc = _idx_loc;
                             } else {
                                 self.add_message(ValidateInfo {
-                                    message: format!("unknown variable {}.", idx_name),
+                                    message: format!("unknown '{}'.", idx_name),
                                     location: ident.location.clone(),
                                     severity: MessageSeverity::ERROR,
                                 });
@@ -407,10 +427,7 @@ impl GeneratorValidator {
                             }
                             if !idx_loc.initialized {
                                 self.add_message(ValidateInfo {
-                                    message: format!(
-                                        "Usage of not initialized variable {}",
-                                        idx_name,
-                                    ),
+                                    message: format!("Usage of not initialized '{}'", idx_name,),
                                     location: ident.location.clone(),
                                     severity: MessageSeverity::WARNING,
                                 });
@@ -464,11 +481,20 @@ impl GeneratorValidator {
         }
 
         if dst_loc.read_only {
-            self.add_message(ValidateInfo {
-                message: format!("Variable {} is read only.", ident.name),
-                location: ident.location.clone(),
-                severity: MessageSeverity::ERROR,
-            });
+            if dst_loc.is_procedure {
+                self.add_message(ValidateInfo {
+                    message: format!("'{}' is a procedure", ident.name),
+                    location: ident.location.clone(),
+                    severity: MessageSeverity::ERROR,
+                });
+            } else {
+                self.add_message(ValidateInfo {
+                    message: format!("'{}' is read only", ident.name),
+                    location: ident.location.clone(),
+                    severity: MessageSeverity::ERROR,
+                });
+            }
+
             return;
         }
 
@@ -479,7 +505,7 @@ impl GeneratorValidator {
                 Either::Left(idx_name) => {
                     if !dst_loc.is_array {
                         self.add_message(ValidateInfo {
-                            message: format!("Cannot access {} it like that", ident.name),
+                            message: format!("cannot access {} like that", ident.name),
                             location: ident.location.clone(),
                             severity: MessageSeverity::WARNING,
                         });
@@ -500,7 +526,7 @@ impl GeneratorValidator {
 
                     if idx_loc.is_array {
                         self.add_message(ValidateInfo {
-                            message: format!("Cannot access {} it like that", idx_name),
+                            message: format!("cannot access {} like that", idx_name),
                             location: ident.location.clone(),
                             severity: MessageSeverity::WARNING,
                         });
@@ -508,7 +534,7 @@ impl GeneratorValidator {
 
                     if !idx_loc.initialized {
                         self.add_message(ValidateInfo {
-                            message: format!("Variable {} not initialized", idx_name),
+                            message: format!("'{}' not initialized", idx_name),
                             location: ident.location.clone(),
                             severity: MessageSeverity::WARNING,
                         });
@@ -518,7 +544,7 @@ impl GeneratorValidator {
                     let dest_loc = self.get_variable_current_scope(&ident.name).unwrap();
                     if !dest_loc.is_array {
                         self.add_message(ValidateInfo {
-                            message: "cannot access it like that".to_owned(),
+                            message: format!("cannot access {} like that", ident.name),
                             location: ident.location.clone(),
                             severity: MessageSeverity::WARNING,
                         });
@@ -545,7 +571,7 @@ impl GeneratorValidator {
             }
             if dest_loc.is_array {
                 self.add_message(ValidateInfo {
-                    message: "cannot access it like that".to_owned(),
+                    message: format!("cannot access '{}' like that", ident.name),
                     location: ident.location.clone(),
                     severity: MessageSeverity::WARNING,
                 });
@@ -743,9 +769,6 @@ impl GeneratorValidator {
                     return;
                 }
 
-                let jump_target = proc_info.code_location as i64;
-                let return_loc = self.get_variable_global_scope(&proc_name).unwrap();
-
                 for (i, arg) in arguments.iter().enumerate() {
                     let a = self.get_variable_current_scope(&arg.name).unwrap();
 
@@ -787,9 +810,6 @@ impl GeneratorValidator {
                         return 1;
                     });
 
-                let for_num_iters = self.last_mem_slot;
-                self.last_mem_slot -= 1;
-
                 self.generate_value(&from);
 
                 self.generate_value(&to);
@@ -807,19 +827,31 @@ impl GeneratorValidator {
                     }
                 }
                 self.delete_variable_scoped(variable.to_string());
-                self.last_mem_slot += 1;
             }
         }
     }
 
     fn generate_procedure(&mut self, procedure: &Procedure) {
         let return_address_location = self.allocate_procedure(procedure.name.clone());
-        self.current_scope = format!("${}$", procedure.name.clone());
+        self.current_scope = format!("{}::", procedure.name.clone());
 
         let mut args_vec = vec![];
+        self.procedures.insert(
+            procedure.name.clone(),
+            ProcedureInfo {
+                args: vec![],
+                location: procedure.location.clone(),
+            },
+        );
 
         for arg in &procedure.args {
-            self.allocate_arg(arg.name.clone(), arg.is_array);
+            if let Err(err) = self.allocate_arg(arg.name.clone(), arg.is_array) {
+                self.add_message(ValidateInfo {
+                    message: err,
+                    location: procedure.location.clone(),
+                    severity: MessageSeverity::ERROR,
+                });
+            }
             args_vec.push(arg.is_array);
         }
 
@@ -855,8 +887,8 @@ impl GeneratorValidator {
         self.procedures.insert(
             procedure.name.clone(),
             ProcedureInfo {
-                code_location: 0,
                 args: args_vec,
+                location: procedure.location.clone(),
             },
         );
 

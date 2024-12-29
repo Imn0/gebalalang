@@ -19,14 +19,16 @@ pub struct Program {
 
 pub struct Config {
     pub verbose: bool,
-    pub werror: bool
+    pub werror: bool, 
+    pub procedure_separate_namespace: bool
 }
 
 impl  Default for Config {
     fn default() -> Self {
         Config{
             verbose: false, 
-            werror: true
+            werror: true, 
+            procedure_separate_namespace: false
         }
     }    
 }
