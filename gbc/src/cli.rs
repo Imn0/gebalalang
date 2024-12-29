@@ -1,32 +1,22 @@
-use crate::error::{Message, MessageSeverity};
+use crate::program::Program;
 
-#[derive(Default)]
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[command(author = "Krzysztof Andrzejewski", version = "0.6", about = "Gebalalang Compiler", long_about = None)]
 pub struct CliArgs {
     pub input_file: String,
+
+    #[arg(group = "output", default_value = "a.mr")]
     pub output_file: String,
+
+    #[arg(short, long, action = clap::ArgAction::SetTrue)]
+    pub verbose: bool,
 }
 
-pub fn parse_args(args: Vec<String>, cli_args: &mut CliArgs) -> Result<(), ()> {
-    if args.len() < 2 {
-        eprintln!(
-            "{}",
-            Message::GeneralMessage {
-                severity: MessageSeverity::ERROR,
-                message: "no input file provided"
-            }
-        );
-
-        return Err(());
+impl Program {
+    pub fn configure_args(&mut self, cli: &CliArgs) -> Result<(), ()> {
+        self.config.verbose = cli.verbose;
+        Ok(())
     }
-
-    let output = if args.len() == 3 {
-        args.get(2).unwrap().to_owned()
-    } else {
-        "./a.mr".to_string()
-    };
-
-    cli_args.input_file = args.get(1).unwrap().to_owned();
-    cli_args.output_file = output;
-
-    Ok(())
 }

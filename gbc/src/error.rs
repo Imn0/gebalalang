@@ -1,7 +1,9 @@
 use core::fmt;
 use std::{
     cmp::{max, min},
-    io::{self, Write}, vec,
+    io::{self, Write},
+    process::exit,
+    vec,
 };
 
 use tree_sitter::Point;
@@ -86,6 +88,18 @@ pub trait DisplayMessage {
 
 impl DisplayMessage for Program {
     fn print_message(&self, message: Message) {
+        if self.config.verbose {
+            let severity = match message {
+                Message::CodeMessage { severity, .. } => severity,
+                Message::GeneralMessage { severity, .. } => severity,
+            };
+            if severity == MessageSeverity::ERROR || severity == MessageSeverity::FATAL {
+                eprintln!("no");
+                exit(1);
+            }
+            return;
+        }
+
         match message {
             Message::GeneralMessage { severity, message } => {
                 eprintln!(
@@ -105,7 +119,7 @@ impl DisplayMessage for Program {
 
                 let header_spaces_num = (lines.len() as f32).log10() as usize + 2;
                 let header_spaces = " ".repeat(header_spaces_num);
-                
+
                 let start_row = location.0.row;
                 let start_column = location.0.column;
                 let end_row = location.1.row;
@@ -127,9 +141,8 @@ impl DisplayMessage for Program {
                 );
                 eprintln!("\x1b[1;34m{}|\x1b[0m ", header_spaces);
                 if start_row == end_row {
-
                     let end = if start_column == end_column {
-                        end_column+1
+                        end_column + 1
                     } else {
                         end_column
                     };

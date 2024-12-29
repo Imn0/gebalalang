@@ -18,12 +18,24 @@ impl GetLocation for Node<'_> {
     }
 }
 
+pub trait FlattenToCommands {
+    fn get_commands(&self) -> Vec<&Command>;
+    fn get_commands_mut(&self) -> Vec<&mut Command>;
+}
+
+pub trait FlattenToExpressions {
+    fn get_expressions(&self) -> Vec<&Expression>;
+    fn get_expressions_mut(&self) -> Vec<&mut Expression>;
+}
+
+pub trait FlattenToConditions {
+    fn get_conditions(&self) -> Vec<&Condition>;
+    fn get_conditions_mut(&self) -> Vec<&mut Condition>;
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Ast {
     pub is_valid: bool,
-    pub has_mul: bool,
-    pub has_div: bool,
-    pub has_mod: bool,
     pub procedures: HashMap<String, Procedure>,
     pub main_block: MainBlock,
     pub location: Location,
@@ -222,12 +234,12 @@ impl Program {
         self.ast.is_valid = true;
         self.ast.location = location;
 
-        let main_node = root_node.child_by_field_name("main_program").unwrap();
-        self.populate_main(main_node);
-
         if let Some(procedures_node) = root_node.child_by_field_name("procedures") {
             self.populate_procedures(procedures_node);
         }
+
+        let main_node = root_node.child_by_field_name("main_program").unwrap();
+        self.populate_main(main_node);
 
         if self.ast.is_valid {
             Ok(())
@@ -466,6 +478,7 @@ impl Program {
         assert_eq!(node.kind(), "command");
 
         let proc_call_node = node.child_by_field_name("procedure_call").unwrap();
+        let proc_name = self.get_text(proc_call_node.child_by_field_name("name").unwrap());
 
         let args = if let Some(args_node) = proc_call_node.child_by_field_name("arguments") {
             self.gen_args(args_node)
@@ -473,8 +486,16 @@ impl Program {
             vec![]
         };
 
+        if let None = self.ast.procedures.get(&proc_name) {
+            self.print_message(Message::CodeMessage {
+                severity: MessageSeverity::ERROR,
+                message: format!("procedure {} not defined", proc_name).as_str(),
+                location: node.get_location(),
+            });
+        }
+
         Command::ProcedureCall {
-            proc_name: self.get_text(proc_call_node.child_by_field_name("name").unwrap()),
+            proc_name: proc_name,
             arguments: args,
             location: node.get_location(),
         }

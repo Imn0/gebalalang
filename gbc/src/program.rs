@@ -9,7 +9,14 @@ pub struct Program {
     pub source_code: String,
     pub output: Box<[u8]>,
 
+    pub config: Config,
+
     pub ast: Ast,
+}
+
+#[derive(Default)]
+pub struct Config {
+    pub verbose: bool,
 }
 
 impl Program {
