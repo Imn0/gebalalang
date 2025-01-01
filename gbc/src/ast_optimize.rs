@@ -1,5 +1,6 @@
 use crate::program::Program;
 
+mod constant_folding;
 mod normalize;
 
 trait Optimization {
@@ -7,10 +8,12 @@ trait Optimization {
 }
 
 struct Normalize;
+struct ConstantFolding;
 
 impl Program {
     pub fn ast_optimize(&mut self) -> Result<(), ()> {
-        let mut passes = vec![Normalize];
+        let mut passes: Vec<Box<dyn Optimization>> =
+            vec![Box::new(Normalize), Box::new(ConstantFolding)];
 
         for o in &mut passes {
             o.run(self);

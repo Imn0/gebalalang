@@ -44,8 +44,8 @@ fn main() {
     try_or_exit!(p.ast_generate());
     try_or_exit!(p.ast_validate());
     try_or_exit!(p.ast_optimize());
+    println!("{:#?}", p.ast);
     try_or_exit!(p.gen_ir());
-    // println!("{:#?}", p.ast);
     try_or_exit!(p.compile_to_target(Targets::GVM));
     try_or_exit!(p.save_compiled(&args.output_file));
 

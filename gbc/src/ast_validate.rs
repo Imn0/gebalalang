@@ -28,10 +28,7 @@ impl Validator for NoInvalidAccesses {
 impl Program {
     pub fn ast_validate(&self) -> Result<(), ()> {
         let validators: Vec<Box<dyn Validator>> =
-            vec![Box::new(NoRecursiveCalls), 
-            
-            Box::new(NoInvalidAccesses)
-            ];
+            vec![Box::new(NoRecursiveCalls), Box::new(NoInvalidAccesses)];
 
         for validator in &validators {
             try_or_err!(validator.check(self));
