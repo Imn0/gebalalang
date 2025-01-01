@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use tree_sitter::Point;
-
 use crate::ast::{Declaration, Identifier, Location, ProcArgument};
 
 #[derive(Debug, Clone)]

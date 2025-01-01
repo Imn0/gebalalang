@@ -98,7 +98,7 @@ impl DisplayMessage<'_> for Program {
                 eprintln!(
                     "\x1b[1;34m\x1b[0m {} {}:{}:{}",
                     "--->",
-                    self.code_path,
+                    self.config.source_path,
                     start_row + 1,
                     start_column + 1
                 );

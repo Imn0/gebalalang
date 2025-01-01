@@ -1,26 +1,26 @@
-use gvm::GvmTarget;
-
-use crate::program::Program;
+use crate::{
+    code_gen::IrProgram,
+    program::{Program, Targets},
+};
 
 mod gvm;
+mod python;
 
-pub enum Targets {
-    GVM,
+trait Compile {
+    fn compile(&self, ir_prog: &IrProgram) -> Box<[u8]>;
 }
 
-impl Program {
-    pub fn compile_to_target(&mut self, target: Targets) -> Result<(), ()> {
-        match target {
-            Targets::GVM => {
-                let asm = self.code_gen.to_gvm();
-                let mut output: String = String::new();
+struct PythonTarget;
+struct GvmTarget;
 
-                for instruction in &asm {
-                    output += &format!("{}\n", instruction);
-                }
-                self.output = output.as_bytes().into();
-            }
-        }
+impl Program {
+    pub fn compile_to_target(&mut self) -> Result<(), ()> {
+        let target: Box<dyn Compile> = match self.config.target {
+            Targets::GVM => Box::new(GvmTarget),
+            Targets::PYTHON => Box::new(PythonTarget),
+        };
+
+        self.output = target.compile(&self.ir_program);
 
         Ok(())
     }

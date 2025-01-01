@@ -1,43 +1,33 @@
 use std::collections::HashMap;
 
-use ir::IR;
-use memory::{Memory, SymbolLocation};
-
 use crate::program::Program;
 
-mod code_gen;
 pub mod ir;
-mod memory;
+use ir::IR;
+mod ir_generator;
 
-const MIN_CONST_USAGE: i64 = 1;
+pub struct ArgInfo {
+    pub name: String,
+    pub is_array: bool,
+}
 
-#[derive(Clone)]
 pub struct ProcedureInfo {
-    pub label: usize,
-    pub return_address: usize,
-    pub args: Vec<SymbolLocation>,
+    pub name: String,
+    pub args: Vec<ArgInfo>,
+    pub cmds: Vec<IR>,
 }
 
-#[derive(Debug)]
-struct ConstInfo {
-    pub num_used: i64,
-    pub val: i64,
-    pub location: usize,
-}
-
-pub struct CodeGenerator {
-    pub assembly_code: Vec<IR>,
-    memory: Memory,
-    constants: HashMap<i64, ConstInfo>,
-    procedures: HashMap<String, ProcedureInfo>,
+#[derive(Default)]
+pub struct IrProgram {
+    pub main: Vec<IR>,
+    pub procedures: HashMap<String, ProcedureInfo>,
     next_label: usize,
-    last_mem_slot: usize,
     current_scope: String,
 }
 
 impl Program {
     pub fn gen_ir(&mut self) -> Result<(), ()> {
-        self.code_gen.generate_asm(&self.ast);
+        self.ir_program.generate_program(&self.ast);
         Ok(())
     }
 }

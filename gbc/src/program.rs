@@ -1,43 +1,56 @@
 use crate::ast::Ast;
-use crate::code_gen::CodeGenerator;
+use crate::code_gen::IrProgram;
 use crate::message::{DisplayMessage, Message, MessageSeverity};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 
 #[derive(Default)]
 pub struct Program {
-    pub code_path: String,
     pub source_code: String,
     pub output: Box<[u8]>,
 
     pub config: Config,
 
-    pub code_gen: CodeGenerator,
+    pub ir_program: IrProgram,
 
     pub ast: Ast,
 }
 
 pub struct Config {
     pub verbose: bool,
-    pub werror: bool, 
-    pub procedure_separate_namespace: bool
+    pub werror: bool,
+    pub procedure_separate_namespace: bool,
+    pub target: Targets,
+    pub source_path: String,
+    pub output_path: String,
+    pub set_out_to_exe: bool,
 }
 
-impl  Default for Config {
+pub enum Targets {
+    GVM,
+    PYTHON,
+}
+
+impl Default for Config {
     fn default() -> Self {
-        Config{
-            verbose: false, 
-            werror: true, 
-            procedure_separate_namespace: false
+        Config {
+            verbose: false,
+            werror: true,
+            procedure_separate_namespace: false,
+            target: Targets::GVM,
+            source_path: "".to_owned(),
+            output_path: "".to_owned(),
+            set_out_to_exe: false,
         }
-    }    
+    }
 }
 
 impl Program {
-    pub fn load_code(&mut self, path: String) -> Result<(), ()> {
+    pub fn load_code(&mut self) -> Result<(), ()> {
+        let path = &self.config.source_path;
         match fs::read_to_string(&path) {
             Ok(code) => {
-                self.code_path = path;
                 self.source_code = code;
                 Ok(())
             }
@@ -55,7 +68,8 @@ impl Program {
         }
     }
 
-    pub fn save_compiled(&mut self, path: &str) -> Result<(), ()> {
+    pub fn save_compiled(&mut self) -> Result<(), ()> {
+        let path = &self.config.output_path;
         let r2 = OpenOptions::new()
             .create(true)
             .write(true)
@@ -88,6 +102,13 @@ impl Program {
                 .as_str(),
             });
             return Err(());
+        }
+
+        if self.config.set_out_to_exe {
+            let metadata = fs::metadata(path).unwrap(); 
+            let mut permissions = metadata.permissions();
+            permissions.set_mode(0o755); 
+            fs::set_permissions(path, permissions).unwrap();
         }
 
         Ok(())

@@ -6,9 +6,7 @@ use crate::{
     program::Program,
 };
 
-use super::{NoRecursiveCalls, Validator};
-
-
+use super::NoRecursiveCalls;
 
 /**
  *   Can be used to detect recursion for procedures defined after

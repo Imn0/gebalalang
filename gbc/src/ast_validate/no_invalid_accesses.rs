@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File, io::Write};
+use std::collections::HashMap;
 
 use crate::{
     ast::{
@@ -25,7 +25,7 @@ struct ValidateInfo {
     location: Location,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct ProcedureInfo {
     args: Vec<bool>,
     location: Location,
@@ -116,7 +116,10 @@ impl GeneratorValidator {
     }
 
     fn generate_asm(&mut self, ast: &Ast) {
-        for (_, procedure) in &ast.procedures {
+        let mut procs: Vec<Procedure> = ast.procedures.clone().into_values().collect();
+        procs.sort_by(|a, b| a.prio.cmp(&b.prio));
+
+        for procedure in &procs {
             self.generate_procedure(procedure);
         }
 
@@ -337,7 +340,7 @@ impl GeneratorValidator {
 
     fn delete_variable_scoped(&mut self, name: String) {
         let scoped_name = self.current_scope.clone() + &name;
-        if let Some(value) = self.symbols.remove(&scoped_name) {
+        if let Some(_) = self.symbols.remove(&scoped_name) {
         } else {
         }
     }
@@ -663,14 +666,6 @@ impl GeneratorValidator {
 
                     self.store_to_identifier(identifier);
                 }
-                Expression::TimesPowerTwo(value, _) => {
-                    self.generate_value(value);
-                    self.store_to_identifier(identifier);
-                }
-                Expression::HalfTimes(value, _) => {
-                    self.generate_value(value);
-                    self.store_to_identifier(identifier);
-                }
             }
         } else {
             unreachable!();
@@ -697,7 +692,6 @@ impl GeneratorValidator {
                     self.generate_command(cmd);
                 }
             }
-            Command::NoOp => {}
             Command::IfElse {
                 condition,
                 then_commands,
@@ -810,6 +804,12 @@ impl GeneratorValidator {
                         return 1;
                     });
 
+                let ff = self
+                    .symbols
+                    .get_mut(&format!("{}{}", self.current_scope.clone(), variable))
+                    .unwrap();
+                ff.initialized = true;
+
                 self.generate_value(&from);
 
                 self.generate_value(&to);
@@ -833,6 +833,7 @@ impl GeneratorValidator {
 
     fn generate_procedure(&mut self, procedure: &Procedure) {
         let return_address_location = self.allocate_procedure(procedure.name.clone());
+
         self.current_scope = format!("{}::", procedure.name.clone());
 
         let mut args_vec = vec![];

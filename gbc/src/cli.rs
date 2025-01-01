@@ -1,6 +1,8 @@
 use crate::program::Program;
-
-use clap::Parser;
+use crate::program::Targets;
+use clap::parser::ValueSource;
+use clap::CommandFactory;
+use clap::{Parser, ValueEnum};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -10,26 +12,36 @@ use clap::Parser;
     long_about = "yap yap yap"
 )]
 pub struct CliArgs {
-    pub input_file: String,
+    input_file: String,
 
     #[arg(default_value = "a.mr")]
-    pub output_file: String,
+    output_file: String,
 
     #[arg(long, action = clap::ArgAction::SetTrue, help="Verbose error logging")]
-    pub verbose: bool,
-    
+    verbose: bool,
+
     #[arg(long, action = clap::ArgAction::SetTrue, help="Use separate namesapces for variable and procedure names")]
-    pub variable_separation: bool,
+    variable_separation: bool,
 
     #[arg(short, long = "unsafe", action = clap::ArgAction::SetTrue, help="Allows for udefined access")]
-    pub _unsafe: bool,
+    _unsafe: bool,
 
     #[arg(long, action = clap::ArgAction::SetTrue, hide=true)]
-    pub i_know_what_im_doing: bool,
+    i_know_what_im_doing: bool,
+
+    #[arg(short, long, default_value = "gvm")]
+    target: Target,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
+enum Target {
+    GVM,
+    Python,
 }
 
 impl Program {
-    pub fn configure_args(&mut self, cli: &CliArgs) -> Result<(), ()> {
+    pub fn configure_args(&mut self, cli: CliArgs) -> Result<(), ()> {
+        let matches = CliArgs::command().get_matches();
         self.config.verbose = cli.verbose;
         self.config.werror = !cli._unsafe;
 
@@ -38,8 +50,32 @@ impl Program {
             return Err(());
         }
 
+        self.config.source_path = cli.input_file;
+        self.config.output_path = cli.output_file;
         self.config.procedure_separate_namespace = cli.variable_separation;
-        
+
+        let out_default = matches.value_source("output_file") == Some(ValueSource::DefaultValue);
+
+        match cli.target {
+            Target::GVM => {
+                self.config.target = {
+                    if out_default {
+                        self.config.output_path = "a.mr".to_owned();
+                    }
+                    Targets::GVM
+                }
+            }
+            Target::Python => {
+                self.config.target = {
+                    if out_default {
+                        self.config.output_path = "a.py".to_owned();
+                    }
+                    self.config.set_out_to_exe = true;
+                    Targets::PYTHON
+                }
+            }
+        }
+
         Ok(())
     }
 }
