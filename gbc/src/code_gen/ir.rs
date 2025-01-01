@@ -4,7 +4,7 @@ use super::{IrProgram, ProcedureInfo};
 
 #[derive(Debug, Clone)]
 pub enum IR {
-    Value {
+    Aloc {
         name: String,
         is_array: bool,
         array_bounds: Option<(i64, i64)>,
@@ -136,7 +136,7 @@ impl fmt::Display for IR {
                     IR::Read(ir_operand) => write!(f, "read {}", ir_operand),
                     IR::Write(ir_operand) => write!(f, "write {}", ir_operand),
                     IR::Label(_) => unreachable!(),
-                    IR::Value {
+                    IR::Aloc {
                         name,
                         is_array,
                         array_bounds,
@@ -202,3 +202,10 @@ impl fmt::Display for IrProgram {
         write!(f, "")
     }
 }
+
+macro_rules! proc_label {
+    ($proc_name:expr) => {
+        format!("PROC_{}", $proc_name)
+    };
+}
+pub(crate) use proc_label;

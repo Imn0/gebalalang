@@ -1,3 +1,5 @@
+use std::process::Command;
+
 use crate::program::Program;
 use crate::program::Targets;
 use clap::parser::ValueSource;
@@ -31,6 +33,12 @@ pub struct CliArgs {
 
     #[arg(short, long, default_value = "gvm")]
     target: Target,
+
+    #[arg(short, long, action = clap::ArgAction::SetTrue)]
+    run: bool,
+
+    #[arg(long, default_value = "")]
+    run_path: String,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
@@ -74,6 +82,23 @@ impl Program {
                     Targets::PYTHON
                 }
             }
+        }
+
+        self.config.run = cli.run;
+        if cli.run {
+            if cli.run_path.is_empty() {
+                match cli.target {
+                    Target::GVM => {
+                        self.config.run_cmd = Command::new("gvm");
+                    }
+                    Target::Python => {
+                        self.config.run_cmd = Command::new("python3");
+                    }
+                }
+            } else {
+                self.config.run_cmd = Command::new(cli.run_path);
+            }
+            self.config.run_cmd.arg(self.config.output_path.clone());
         }
 
         Ok(())

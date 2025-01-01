@@ -1,4 +1,4 @@
-use crate::code_gen::ir::{IrOperand, IR};
+use crate::code_gen::ir::{proc_label, IrOperand, IR};
 
 use super::{Compile, PythonTarget};
 
@@ -207,7 +207,7 @@ fn compile_op(ir_op: &IR) -> String {
                     .map(|o| o.to_string())
                     .collect::<Vec<String>>()
                     .join(", "),
-                procedure,
+                proc_label!(procedure),
                 arguments
                     .iter()
                     .map(|o| o.to_string())
@@ -224,7 +224,7 @@ fn compile_op(ir_op: &IR) -> String {
         IR::Write(ir_operand) => {
             format!("print(f\"{{{}}}\")", get_ir_operand(ir_operand))
         }
-        IR::Value {
+        IR::Aloc {
             name,
             is_array,
             array_bounds: _,

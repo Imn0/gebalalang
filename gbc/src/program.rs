@@ -2,8 +2,10 @@ use crate::ast::Ast;
 use crate::code_gen::IrProgram;
 use crate::message::{DisplayMessage, Message, MessageSeverity};
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
+use std::process::{Command, Stdio};
+use std::thread;
 
 #[derive(Default)]
 pub struct Program {
@@ -25,6 +27,8 @@ pub struct Config {
     pub source_path: String,
     pub output_path: String,
     pub set_out_to_exe: bool,
+    pub run: bool,
+    pub run_cmd: Command,
 }
 
 pub enum Targets {
@@ -42,6 +46,8 @@ impl Default for Config {
             source_path: "".to_owned(),
             output_path: "".to_owned(),
             set_out_to_exe: false,
+            run: false,
+            run_cmd: Command::new(""),
         }
     }
 }
@@ -105,12 +111,82 @@ impl Program {
         }
 
         if self.config.set_out_to_exe {
-            let metadata = fs::metadata(path).unwrap(); 
+            let metadata = fs::metadata(path).unwrap();
             let mut permissions = metadata.permissions();
-            permissions.set_mode(0o755); 
+            permissions.set_mode(0o755);
             fs::set_permissions(path, permissions).unwrap();
         }
 
         Ok(())
+    }
+
+    pub fn run(&mut self) -> Result<(), ()> {
+        if !self.config.run {
+            return Ok(());
+        }
+
+        self.print_message(Message::GeneralMessage {
+            severity: MessageSeverity::DEBUG,
+            message: &format!("running program"),
+        });
+
+        let mut command = self
+            .config
+            .run_cmd
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| {
+                self.print_message(Message::GeneralMessage {
+                    severity: MessageSeverity::ERROR,
+                    message: &format!("error running program: {}", e),
+                });
+                ()
+            })?;
+
+        let stdout = command.stdout.take().unwrap();
+        let stdout_handle = thread::spawn(move || {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines() {
+                if let Ok(line) = line {
+                    println!("{}", line);
+                }
+            }
+        });
+
+        let stderr = command.stderr.take().unwrap();
+        let stderr_handle = thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines() {
+                if let Ok(line) = line {
+                    println!("{}", line);
+                }
+            }
+        });
+        match command.wait() {
+            Ok(status) => {
+                if !status.success() {
+                    self.print_message(Message::GeneralMessage {
+                        severity: MessageSeverity::ERROR,
+                        message: &format!("program exited with status: {}", status),
+                    });
+                    return Err(());
+                }
+            }
+            Err(e) => {
+                self.print_message(Message::GeneralMessage {
+                    severity: MessageSeverity::ERROR,
+                    message: &format!("failed to wait for program: {}", e),
+                });
+                return Err(());
+            }
+        }
+        stdout_handle.join().unwrap();
+        stderr_handle.join().unwrap();
+        self.print_message(Message::GeneralMessage {
+            severity: MessageSeverity::DEBUG,
+            message: &format!("done"),
+        });
+        return Ok(());
     }
 }

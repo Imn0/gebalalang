@@ -3,7 +3,7 @@ use crate::ast::{
 };
 
 use super::{
-    ir::{IrOperand, IR},
+    ir::{proc_label, IrOperand, IR},
     ArgInfo, IrProgram, ProcedureInfo,
 };
 
@@ -29,7 +29,7 @@ impl IrProgram {
     fn generate_procedure(&mut self, procedure: &Procedure) {
         self.current_scope = format!("{}", procedure.name);
 
-        let proc_lbl = self.new_label(&procedure.name);
+        let proc_lbl = proc_label!(&procedure.name);
 
         let mut v = vec![];
         let mut args = vec![];
@@ -41,13 +41,13 @@ impl IrProgram {
             });
         }
 
-        v.push(IR::Label(proc_lbl));
+        v.push(IR::Label(proc_lbl.clone()));
         v.append(&mut self.allocate_declarations(&procedure.declarations));
         v.append(&mut self.compile_commands(&procedure.commands));
         v.push(IR::Return);
 
         let proc_info = ProcedureInfo {
-            name: procedure.name.clone(),
+            name: proc_lbl,
             args: args,
             cmds: v,
         };
@@ -146,13 +146,13 @@ impl IrProgram {
             } => {
                 let mut v = vec![];
 
-                v.push(IR::Value {
+                v.push(IR::Aloc {
                     name: variable.to_string(),
                     is_array: false,
                     array_bounds: None,
                 });
 
-                v.push(IR::Value {
+                v.push(IR::Aloc {
                     name: format!("{}CNT", variable),
                     is_array: false,
                     array_bounds: None,
@@ -316,7 +316,7 @@ impl IrProgram {
     fn allocate_declarations(&mut self, declarations: &Vec<Declaration>) -> Vec<IR> {
         declarations
             .iter()
-            .map(|d| IR::Value {
+            .map(|d| IR::Aloc {
                 name: d.name.clone(),
                 is_array: if let Some(_) = d.array_size {
                     true

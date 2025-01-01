@@ -10,7 +10,6 @@ mod cli;
 mod code_gen;
 mod message;
 mod targets;
-mod tests;
 
 macro_rules! try_or_exit {
     ($expr:expr) => {
@@ -43,6 +42,7 @@ fn main() {
     // println!("{}", p.ir_program);
     try_or_exit!(p.compile_to_target());
     try_or_exit!(p.save_compiled());
+    try_or_exit!(p.run());
 
     exit(0);
 }
