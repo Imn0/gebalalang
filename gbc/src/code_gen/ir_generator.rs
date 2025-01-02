@@ -3,7 +3,7 @@ use crate::ast::{
 };
 
 use super::{
-    ir::{proc_label, IrOperand, IR},
+    ir::{IrOperand, IR},
     ArgInfo, IrProgram, ProcedureInfo,
 };
 
@@ -29,7 +29,7 @@ impl IrProgram {
     fn generate_procedure(&mut self, procedure: &Procedure) {
         self.current_scope = format!("{}", procedure.name);
 
-        let proc_lbl = proc_label!(&procedure.name);
+        let proc_lbl = self.new_label(&procedure.name);
 
         let mut v = vec![];
         let mut args = vec![];
@@ -47,7 +47,8 @@ impl IrProgram {
         v.push(IR::Return);
 
         let proc_info = ProcedureInfo {
-            name: proc_lbl,
+            lbl: proc_lbl,
+            name: procedure.name.clone(),
             args: args,
             cmds: v,
         };
@@ -58,7 +59,7 @@ impl IrProgram {
     }
 
     fn new_label(&mut self, prefix: &str) -> String {
-        let label = format!("L{}_{}", prefix, self.next_label);
+        let label = format!("L{}_i{}", prefix, self.next_label);
         self.next_label += 1;
         label
     }
@@ -214,6 +215,14 @@ impl IrProgram {
 
                 v.push(IR::Jump(loop_start));
                 v.push(IR::Label(loop_exit));
+
+                v.push(IR::Drop {
+                    name: variable.to_string(),
+                });
+
+                v.push(IR::Drop {
+                    name: format!("{}CNT", variable),
+                });
 
                 v
             }

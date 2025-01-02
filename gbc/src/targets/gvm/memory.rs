@@ -1,4 +1,8 @@
-use std::collections::HashMap;
+use std::{
+    cmp::{max, min},
+    collections::HashMap,
+    f32::consts::E,
+};
 
 use crate::ast::{Declaration, Identifier, Location, ProcArgument};
 
@@ -6,10 +10,7 @@ use crate::ast::{Declaration, Identifier, Location, ProcArgument};
 pub struct SymbolLocation {
     pub memory_address: usize,
     pub is_array: bool,
-    pub array_bounds: Option<(i64, i64)>,
     pub is_pointer: bool,
-    pub read_only: bool,
-    pub initialized: bool,
 }
 
 impl SymbolLocation {
@@ -17,10 +18,7 @@ impl SymbolLocation {
         SymbolLocation {
             memory_address: 0,
             is_array: false,
-            array_bounds: None,
             is_pointer: false,
-            read_only: false,
-            initialized: false,
         }
     }
 }
@@ -37,12 +35,96 @@ impl Memory {
             next_memory_slot: 1,
         }
     }
+
+    pub fn allocate_array(&mut self, name: &str, scope: &str, left: i64, right: i64) {
+        let scoped_name = scoped_name(name, scope);
+
+        let move_left = min(left, 0);
+        self.next_memory_slot += (-move_left) as usize;
+
+        let move_right = right;
+
+        self.symbols.insert(
+            scoped_name,
+            SymbolLocation {
+                memory_address: self.next_memory_slot,
+                is_array: true,
+                is_pointer: false,
+            },
+        );
+        if move_right < 0 {
+            self.next_memory_slot -= (-move_right) as usize;
+        } else {
+            self.next_memory_slot += move_right as usize;
+        }
+        self.next_memory_slot += 1;
+    }
+
+    pub fn allocate_var(&mut self, name: &str, scope: &str) {
+        let scoped_name = scoped_name(name, scope);
+        self.allocate(scoped_name, false, false);
+    }
+
+    pub fn allocate_const(&mut self, constant: i64) {
+        let scoped_name = constant_name(constant);
+        self.allocate(scoped_name, false, false);
+    }
+
+    pub fn allocate_proc_arg(&mut self, name: &str, scope: &str, is_array: bool) -> SymbolLocation {
+        let scoped_name = scoped_name(name, scope);
+        self.allocate(scoped_name, is_array, true)
+    }
+
+    pub fn allocate_proc_return(&mut self, name: &str) -> usize {
+        self.symbols.insert(
+            name.to_owned(),
+            SymbolLocation {
+                memory_address: self.next_memory_slot,
+                is_array: false,
+                is_pointer: false,
+            },
+        );
+        self.next_memory_slot += 1;
+        return self.next_memory_slot - 1;
+    }
+
+    fn allocate(
+        &mut self,
+        scoped_name: String,
+        is_array: bool,
+        is_pointer: bool,
+    ) -> SymbolLocation {
+        self.symbols.insert(
+            scoped_name,
+            SymbolLocation {
+                memory_address: self.next_memory_slot,
+                is_array: is_array,
+                is_pointer: is_pointer,
+            },
+        );
+        self.next_memory_slot += 1;
+        return SymbolLocation {
+            memory_address: self.next_memory_slot - 1,
+            is_array: is_array,
+            is_pointer: is_pointer,
+        };
+    }
+
+    pub fn drop_var(&mut self, name: &str, scope: &str) {
+        let scoped_name = scoped_name(name, scope);
+        self.symbols.remove(&scoped_name);
+    }
+
+    pub fn get_base_loc(&mut self, name: &str, scope: &str) -> &SymbolLocation {
+        let scoped_name = scoped_name(name, scope);
+        self.symbols.get(&scoped_name).unwrap()
+    }
 }
 
-fn get_scoped_name(name: &String, scope: &String) -> String {
+fn scoped_name(name: &str, scope: &str) -> String {
     return format!("{}::{}", scope, name);
 }
 
-fn get_constant_name(constant: i64) -> String {
+fn constant_name(constant: i64) -> String {
     return format!("$:{}", constant);
 }

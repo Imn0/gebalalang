@@ -13,6 +13,7 @@ pub struct ArgInfo {
 
 pub struct ProcedureInfo {
     pub name: String,
+    pub lbl: String,
     pub args: Vec<ArgInfo>,
     pub cmds: Vec<IR>,
 }

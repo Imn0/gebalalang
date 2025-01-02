@@ -1,4 +1,4 @@
-use crate::code_gen::ir::{proc_label, IrOperand, IR};
+use crate::code_gen::ir::{IrOperand, IR};
 
 use super::{Compile, PythonTarget};
 
@@ -13,7 +13,7 @@ impl Compile for PythonTarget {
         out += "\tdef __init__(self, label):\n";
         out += "\t\tself.label = label\n\n";
 
-        for (name, proc) in ir_prog.procedures.iter() {
+        for (_, proc) in ir_prog.procedures.iter() {
             out += "def ";
             out += &format!(
                 "{}({}):\n",
@@ -207,7 +207,7 @@ fn compile_op(ir_op: &IR) -> String {
                     .map(|o| o.to_string())
                     .collect::<Vec<String>>()
                     .join(", "),
-                proc_label!(procedure),
+                procedure,
                 arguments
                     .iter()
                     .map(|o| o.to_string())
@@ -234,6 +234,9 @@ fn compile_op(ir_op: &IR) -> String {
             } else {
                 format!("{}={{}}", name)
             }
+        }
+        IR::Drop { name: _ } => {
+            format!("")
         }
     }
 }

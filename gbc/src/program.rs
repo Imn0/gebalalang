@@ -2,7 +2,7 @@ use crate::ast::Ast;
 use crate::code_gen::IrProgram;
 use crate::message::{DisplayMessage, Message, MessageSeverity};
 use std::fs::{self, OpenOptions};
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::process::{Command, Stdio};
 use std::thread;

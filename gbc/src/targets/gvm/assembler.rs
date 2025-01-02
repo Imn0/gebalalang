@@ -187,9 +187,9 @@ pub fn assemble(gvme: &Vec<GVMe>, procs: &HashMap<String, GVMeProc>) -> Vec<GVM>
     for (i, ir) in gvme.iter().enumerate() {
         match ir {
             GVMe::call { name } => {
-                let proc_info = procs.get(name).unwrap().clone().to_owned();
+                let proc_info = procs.get(name).unwrap().to_owned();
 
-                let jump_dist = distance_to_label(gvme, i, proc_info.label);
+                let jump_dist = distance_to_label(gvme, i, proc_info.label.0);
 
                 let return_place = get_true_len_between(gvme, 0, i) + 3;
                 asm_code.push(GVM::SET(return_place as i64));

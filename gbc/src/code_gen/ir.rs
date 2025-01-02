@@ -9,6 +9,9 @@ pub enum IR {
         is_array: bool,
         array_bounds: Option<(i64, i64)>,
     },
+    Drop {
+        name: String,
+    },
     Mov {
         dest: IrOperand,
         src: IrOperand,
@@ -149,6 +152,7 @@ impl fmt::Display for IR {
                         }
                         write!(f, "")
                     }
+                    IR::Drop { name } => write!(f, "drop {}", name),
                 }
             }
         }
@@ -203,9 +207,4 @@ impl fmt::Display for IrProgram {
     }
 }
 
-macro_rules! proc_label {
-    ($proc_name:expr) => {
-        format!("PROC_{}", $proc_name)
-    };
-}
-pub(crate) use proc_label;
+
