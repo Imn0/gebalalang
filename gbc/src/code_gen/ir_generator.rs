@@ -19,7 +19,7 @@ impl IrProgram {
         self.current_scope = "MAIN".to_owned();
         let mut decls = self.allocate_declarations(&main_block.declarations);
         self.main = vec![];
-        self.main.push(IR::Label("_start".to_owned()));
+        self.main.push(IR::Comment("_start".to_owned()));
         self.main.append(&mut decls);
         let mut cmds = self.compile_commands(&main_block.commands);
         self.main.append(&mut cmds);
@@ -41,7 +41,6 @@ impl IrProgram {
             });
         }
 
-        v.push(IR::Label(proc_lbl.clone()));
         v.append(&mut self.allocate_declarations(&procedure.declarations));
         v.append(&mut self.compile_commands(&procedure.commands));
         v.push(IR::Return);

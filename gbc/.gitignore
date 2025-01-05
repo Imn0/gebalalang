@@ -1,4 +1,5 @@
 /target
 *.gbl
 *.mr
+*.ir
 *.py

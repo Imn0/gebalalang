@@ -1,6 +1,6 @@
 use std::{
     cmp::{max, min},
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     f32::consts::E,
 };
 
@@ -25,6 +25,7 @@ impl SymbolLocation {
 #[derive(Debug, Default)]
 pub struct Memory {
     symbols: HashMap<String, SymbolLocation>,
+    constants: HashSet<i64>,
     next_memory_slot: usize,
 }
 
@@ -32,6 +33,7 @@ impl Memory {
     pub fn new() -> Self {
         Memory {
             symbols: HashMap::new(),
+            constants: HashSet::new(),
             next_memory_slot: 1,
         }
     }
@@ -62,11 +64,6 @@ impl Memory {
 
     pub fn allocate_var(&mut self, name: &str, scope: &str) {
         let scoped_name = scoped_name(name, scope);
-        self.allocate(scoped_name, false, false);
-    }
-
-    pub fn allocate_const(&mut self, constant: i64) {
-        let scoped_name = constant_name(constant);
         self.allocate(scoped_name, false, false);
     }
 
@@ -115,9 +112,37 @@ impl Memory {
         self.symbols.remove(&scoped_name);
     }
 
-    pub fn get_base_loc(&mut self, name: &str, scope: &str) -> &SymbolLocation {
+    pub fn get_base_loc(&self, name: &str, scope: &str) -> &SymbolLocation {
         let scoped_name = scoped_name(name, scope);
         self.symbols.get(&scoped_name).unwrap()
+    }
+
+    pub fn get_const(&self, constant: &i64) -> &SymbolLocation {
+        let c_name = constant_name(constant);
+        self.symbols.get(&c_name).unwrap()
+    }
+
+    pub fn get_constants(&self) -> Vec<&i64> {
+        return self.constants.iter().collect();
+    }
+
+    pub fn get_const_loc_or_aloc(&mut self, constant: &i64) -> &SymbolLocation {
+        let c_name = constant_name(constant);
+
+        if !self.symbols.contains_key(&c_name) {
+            self.symbols.insert(
+                c_name.clone(),
+                SymbolLocation {
+                    memory_address: self.next_memory_slot,
+                    is_array: false,
+                    is_pointer: false,
+                },
+            );
+            self.next_memory_slot += 1;
+            self.constants.insert(constant.clone());
+        }
+
+        self.symbols.get(&c_name).unwrap()
     }
 }
 
@@ -125,6 +150,6 @@ fn scoped_name(name: &str, scope: &str) -> String {
     return format!("{}::{}", scope, name);
 }
 
-fn constant_name(constant: i64) -> String {
+fn constant_name(constant: &i64) -> String {
     return format!("$:{}", constant);
 }

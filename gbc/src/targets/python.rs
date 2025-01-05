@@ -238,6 +238,7 @@ fn compile_op(ir_op: &IR) -> String {
         IR::Drop { name: _ } => {
             format!("")
         }
+        IR::Comment(_) => format!(""),
     }
 }
 

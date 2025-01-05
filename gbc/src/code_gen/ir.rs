@@ -80,9 +80,10 @@ pub enum IR {
     Return,
     Read(IrOperand),
     Write(IrOperand),
+    Comment(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IrOperand {
     Variable(String),
     Constant(i64),
@@ -94,10 +95,14 @@ impl fmt::Display for IR {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             IR::Label(lbl) => write!(f, "{}", lbl),
+            IR::Comment(cm) => write!(f, "?# {}", cm),
 
             _ => {
                 write!(f, "  ")?;
                 match self {
+                    IR::Comment(_) => unreachable!(),
+                    IR::Label(_) => unreachable!(),
+
                     IR::Mov { dest, src } => write!(f, "store {} {}", dest, src),
                     IR::Add { dest, left, right } => write!(f, "add {} {} {}", dest, left, right),
                     IR::Sub { dest, left, right } => write!(f, "sub {} {} {}", dest, left, right),
@@ -138,7 +143,6 @@ impl fmt::Display for IR {
                     IR::Return => write!(f, "rtn"),
                     IR::Read(ir_operand) => write!(f, "read {}", ir_operand),
                     IR::Write(ir_operand) => write!(f, "write {}", ir_operand),
-                    IR::Label(_) => unreachable!(),
                     IR::Aloc {
                         name,
                         is_array,
@@ -175,16 +179,22 @@ impl fmt::Display for IrOperand {
 
 impl fmt::Display for ProcedureInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} ", self.name)?;
+        write!(f, "fn {}(", self.name)?;
+
+        let mut args_str = String::new();
 
         for arg in self.args.iter() {
-            write!(f, "{}", arg.name)?;
+            args_str.push_str(&arg.name);
             if arg.is_array {
-                write!(f, "@T ")?;
+                args_str.push_str("@T ");
+            } else {
+                args_str.push(' ');
             }
-            write!(f, " ")?;
         }
-        writeln!(f, "")?;
+
+        args_str.pop();
+
+        writeln!(f, "{}):", args_str)?;
 
         for ir_cmd in self.cmds.iter() {
             write!(f, "{}\n", ir_cmd)?;
@@ -206,5 +216,3 @@ impl fmt::Display for IrProgram {
         write!(f, "")
     }
 }
-
-

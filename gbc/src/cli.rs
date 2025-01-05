@@ -34,11 +34,18 @@ pub struct CliArgs {
     #[arg(short, long, default_value = "gvm")]
     target: Target,
 
-    #[arg(short, long, action = clap::ArgAction::SetTrue)]
+    #[arg(short, long, action = clap::ArgAction::SetTrue, help="Whether to run the compiled program")]
     run: bool,
 
-    #[arg(long, default_value = "")]
+    #[arg(
+        long,
+        default_value = "",
+        help = "Path for program runner, it will be run as <run_path> <output_file>, not needed when compiling for python"
+    )]
     run_path: String,
+
+    #[arg(long, action = clap::ArgAction::SetTrue, help="Wheter to save IR of the program")]
+    emmit_ir: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
@@ -100,6 +107,8 @@ impl Program {
             }
             self.config.run_cmd.arg(self.config.output_path.clone());
         }
+
+        self.config.save_ir = cli.emmit_ir;
 
         Ok(())
     }

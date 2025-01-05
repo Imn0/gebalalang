@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::{self},
+    process::id,
     usize,
 };
 
@@ -16,6 +17,7 @@ use super::memory::Memory;
 #[derive(Clone, Debug, Default)]
 pub struct LabelIdx(pub usize);
 
+#[allow(non_camel_case_types)]
 #[derive(Clone, Debug)]
 pub enum GVMe {
     GET(usize),
@@ -96,6 +98,7 @@ struct GVMeGnerator<'a> {
     proc_info: HashMap<String, GVMeProc>,
     memory: Memory,
     current_scope: &'a str,
+    last_mem_slot: usize,
 }
 
 struct VarLoc {
@@ -109,6 +112,7 @@ pub fn compile(ir_program: &IrProgram) -> GVMeProgram {
         memory: Memory::new(),
         proc_info: HashMap::new(),
         current_scope: "",
+        last_mem_slot: 0x4000000000000000,
     };
 
     generator.generate_code(ir_program);
@@ -129,8 +133,18 @@ impl<'a> GVMeGnerator<'a> {
         for op in &ir_program.main {
             self.compile_op(op);
         }
-        println!("{:#?}", self.memory);
         self.code.push(GVMe::HALT);
+        // TODO ADD PROCEDURES !!!
+
+        let mut c = vec![];
+        for constant in self.memory.get_constants() {
+            let loc = self.memory.get_const(constant);
+            c.push(GVMe::SET(constant.clone()));
+            c.push(GVMe::STORE(loc.memory_address));
+        }
+
+        c.append(&mut self.code);
+        self.code = c;
     }
 
     fn generate_procedure_stub(&mut self, proc_info: &ProcedureInfo) -> GVMeProc {
@@ -150,7 +164,13 @@ impl<'a> GVMeGnerator<'a> {
         }
     }
 
-    fn compile_op(&mut self, op: &IR) {
+    fn compile_procedure(&mut self, proc_info: &ProcedureInfo) {
+        for op in &proc_info.cmds {
+            self.compile_op(op);
+        }
+    }
+
+    fn compile_op(&mut self, op: &IR) -> Option<()> {
         match op {
             IR::Aloc {
                 name,
@@ -164,13 +184,83 @@ impl<'a> GVMeGnerator<'a> {
                 } else {
                     self.memory.allocate_var(name, self.current_scope);
                 }
+                Some(())
             }
             IR::Drop { name } => {
                 self.memory.drop_var(name, &self.current_scope);
+                Some(())
             }
-            IR::Mov { dest, src } => todo!(),
-            IR::Add { dest, left, right } => todo!(),
-            IR::Sub { dest, left, right } => todo!(),
+            IR::Mov { dest, src } => {
+                if let (Some(dest_loc), Some(src_loc)) = (
+                    self.get_var_location_no_extra_cmds(dest),
+                    self.get_var_location_no_extra_cmds(src),
+                ) {
+                    self.compile_load_loc_to_acc(&src_loc);
+                    self.compile_store_acc_to_loc(&dest_loc);
+                    return Some(());
+                } else {
+                    let dest_loc = self.get_var_location(dest);
+
+                    let stored;
+                    if dest_loc.loc == 0 {
+                        stored = true;
+                        self.code.push(GVMe::STORE(self.last_mem_slot));
+                    } else {
+                        stored = false;
+                    }
+
+                    let src_loc = self.get_var_location(src);
+
+                    self.compile_load_loc_to_acc(&src_loc);
+                    self.compile_store_acc_to_loc(&VarLoc {
+                        loc: if stored {
+                            self.last_mem_slot
+                        } else {
+                            dest_loc.loc
+                        },
+                        is_pointer: dest_loc.is_pointer,
+                    });
+                    Some(())
+                }
+            }
+            IR::Add { dest, left, right } => {
+                // TODO extra cmds
+
+                if let (Some(dest_loc), Some(left_loc), Some(right_loc)) = (
+                    self.get_var_location_no_extra_cmds(dest),
+                    self.get_var_location_no_extra_cmds(left),
+                    self.get_var_location_no_extra_cmds(right),
+                ) {
+                    self.compile_load_loc_to_acc(&left_loc);
+                    if right_loc.is_pointer {
+                        self.code.push(GVMe::ADDI(right_loc.loc));
+                    } else {
+                        self.code.push(GVMe::ADD(right_loc.loc));
+                    }
+                    self.compile_store_acc_to_loc(&dest_loc);
+                }
+
+                Some(())
+            }
+            IR::Sub { dest, left, right } => {
+                // TODO extra cmds
+
+                if let (Some(dest_loc), Some(left_loc), Some(right_loc)) = (
+                    self.get_var_location_no_extra_cmds(dest),
+                    self.get_var_location_no_extra_cmds(left),
+                    self.get_var_location_no_extra_cmds(right),
+                ) {
+                    self.compile_load_loc_to_acc(&left_loc);
+                    if right_loc.is_pointer {
+                        self.code.push(GVMe::SUBI(right_loc.loc));
+                    } else {
+                        self.code.push(GVMe::SUB(right_loc.loc));
+                    }
+                    self.compile_store_acc_to_loc(&dest_loc);
+                }
+
+                Some(())
+            }
             IR::Mul { dest, left, right } => todo!(),
             IR::Div { dest, left, right } => todo!(),
             IR::Mod { dest, left, right } => todo!(),
@@ -180,44 +270,138 @@ impl<'a> GVMeGnerator<'a> {
                     idx: lbl,
                     name: str_lbl.clone(),
                 });
+                Some(())
             }
             IR::Jump(str_lbl) => {
                 let lbl = self.get_label(&str_lbl);
                 self.code.push(GVMe::lbl_jump(lbl));
-            },
-            IR::JZero { left, right, label } => todo!(),
-            IR::JNotZero { left, right, label } => todo!(),
-            IR::JPositive { left, right, label } => todo!(),
-            IR::JNegative { left, right, label } => todo!(),
-            IR::JPositiveOrZero { left, right, label } => todo!(),
-            IR::JNegativeOrZero { left, right, label } => todo!(),
+                Some(())
+            }
+            IR::JZero { left, right, label } => {
+                self.compile_sub_res_in_acc(left, right);
+                self.code.push(GVMe::jz(self.get_label(&label)));
+                Some(())
+            }
+            IR::JNotZero { left, right, label } => {
+                self.compile_sub_res_in_acc(left, right);
+                self.code.push(GVMe::jnz(self.get_label(label)));
+                Some(())
+            }
+            IR::JPositive { left, right, label } => {
+                self.compile_sub_res_in_acc(left, right);
+                self.code.push(GVMe::jpos(self.get_label(label)));
+                Some(())
+            }
+            IR::JNegative { left, right, label } => {
+                self.compile_sub_res_in_acc(left, right);
+                self.code.push(GVMe::jneg(self.get_label(label)));
+                Some(())
+            }
+            IR::JPositiveOrZero { left, right, label } => {
+                self.compile_sub_res_in_acc(left, right);
+                self.code.push(GVMe::jposz(self.get_label(label)));
+                Some(())
+            }
+            IR::JNegativeOrZero { left, right, label } => {
+                self.compile_sub_res_in_acc(left, right);
+                self.code.push(GVMe::jnegz(self.get_label(label)));
+                Some(())
+            }
             IR::Call {
                 procedure,
                 arguments,
-            } => todo!(),
+            } => {Some(())},
             IR::Return => todo!(),
             IR::Read(ir_operand) => {
-                let var_loc = self.get_var_location_no_extra_cmds(ir_operand);
+                let var_loc = self.get_var_location(ir_operand);
                 if !var_loc.is_pointer {
                     self.code.push(GVMe::GET(var_loc.loc));
                 } else {
                     self.code.push(GVMe::GET(0));
                     self.code.push(GVMe::STOREI(var_loc.loc));
                 }
+                Some(())
             }
             IR::Write(ir_operand) => {
-                let var_loc = self.get_var_location_no_extra_cmds(ir_operand);
+                let var_loc = self.get_var_location(ir_operand);
                 if !var_loc.is_pointer {
                     self.code.push(GVMe::PUT(var_loc.loc));
                 } else {
                     self.code.push(GVMe::LOADI(var_loc.loc));
                     self.code.push(GVMe::PUT(0));
                 }
+                Some(())
+            }
+            IR::Comment(cm) => {
+                self.code.push(GVMe::comment { cm: cm.to_string() });
+                Some(())
             }
         }
     }
 
-    fn get_var_location_no_extra_cmds(&mut self, operand: &IrOperand) -> VarLoc {
+    fn compile_sub_res_in_acc(&mut self, left: &IrOperand, right: &IrOperand) {
+        // TODO extra cmds
+        if let (Some(left_loc), Some(right_loc)) = (
+            self.get_var_location_no_extra_cmds(left),
+            self.get_var_location_no_extra_cmds(right),
+        ) {
+            if left_loc.is_pointer {
+                self.code.push(GVMe::LOADI(left_loc.loc));
+            } else {
+                self.code.push(GVMe::LOAD(left_loc.loc));
+            }
+
+            if right_loc.is_pointer {
+                self.code.push(GVMe::SUBI(right_loc.loc));
+            } else {
+                self.code.push(GVMe::SUB(right_loc.loc));
+            }
+        }
+    }
+
+    fn compile_load_loc_to_acc(&mut self, loc: &VarLoc) {
+        if loc.is_pointer {
+            self.code.push(GVMe::LOADI(loc.loc));
+        } else {
+            self.code.push(GVMe::LOAD(loc.loc));
+        }
+    }
+    fn compile_store_acc_to_loc(&mut self, loc: &VarLoc) {
+        if loc.is_pointer {
+            self.code.push(GVMe::STOREI(loc.loc));
+        } else {
+            self.code.push(GVMe::STORE(loc.loc));
+        }
+    }
+
+    fn get_var_location_no_extra_cmds(&mut self, operand: &IrOperand) -> Option<VarLoc> {
+        match operand {
+            IrOperand::Variable(name) => {
+                let loc = self.memory.get_base_loc(name, &self.current_scope);
+                Some(VarLoc {
+                    loc: loc.memory_address,
+                    is_pointer: loc.is_pointer,
+                })
+            }
+            IrOperand::Constant(val) => Some(self.get_const_loc(val)),
+            IrOperand::ArrayConstAccess { base_name, idx } => {
+                let base_loc = self.memory.get_base_loc(&base_name, &self.current_scope);
+
+                if !base_loc.is_array {
+                    return Some(VarLoc {
+                        loc: (base_loc.memory_address as i64 + idx) as usize,
+                        is_pointer: false,
+                    });
+                }
+                return None;
+            }
+            IrOperand::ArrayDynamicAccess { .. } => {
+                return None;
+            }
+        }
+    }
+
+    fn get_var_location(&mut self, operand: &IrOperand) -> VarLoc {
         match operand {
             IrOperand::Variable(name) => {
                 let loc = self.memory.get_base_loc(name, &self.current_scope);
@@ -226,12 +410,59 @@ impl<'a> GVMeGnerator<'a> {
                     is_pointer: loc.is_pointer,
                 }
             }
-            IrOperand::Constant(val) => todo!(),
-            IrOperand::ArrayConstAccess { base_name, idx } => todo!(),
+            IrOperand::Constant(val) => self.get_const_loc(val),
+            IrOperand::ArrayConstAccess { base_name, idx } => {
+                let base_loc = self.memory.get_base_loc(&base_name, &self.current_scope);
+
+                if !base_loc.is_array {
+                    return VarLoc {
+                        loc: (base_loc.memory_address as i64 + idx) as usize,
+                        is_pointer: false,
+                    };
+                }
+                let memory_address = base_loc.memory_address;
+                self.const_in_acc(idx);
+                self.code.push(GVMe::ADD(memory_address));
+                VarLoc {
+                    is_pointer: true,
+                    loc: 0,
+                }
+            }
             IrOperand::ArrayDynamicAccess {
                 base_name,
                 idx_name,
-            } => todo!(),
+            } => {
+                let scope = self.current_scope;
+                let base_loc = self.memory.get_base_loc(&base_name, &scope);
+                let idx_loc = self.memory.get_base_loc(&idx_name, &scope);
+                let base_addr = base_loc.memory_address;
+                let idx_addr = idx_loc.memory_address;
+
+                let base_address = base_loc.memory_address;
+                let idx_address = idx_loc.memory_address;
+                match (base_loc.is_pointer, idx_loc.is_pointer) {
+                    (false, false) => {
+                        self.const_in_acc(&(base_addr as i64));
+                        self.code.push(GVMe::ADD(idx_addr));
+                    }
+                    (false, true) => {
+                        self.const_in_acc(&(base_address as i64));
+                        self.code.push(GVMe::ADDI(idx_address));
+                    }
+                    (true, false) => {
+                        self.code.push(GVMe::LOAD(base_loc.memory_address));
+                        self.code.push(GVMe::ADD(idx_loc.memory_address));
+                    }
+                    (true, true) => {
+                        self.code.push(GVMe::LOAD(base_loc.memory_address));
+                        self.code.push(GVMe::ADDI(idx_loc.memory_address));
+                    }
+                }
+                VarLoc {
+                    is_pointer: true,
+                    loc: 0,
+                }
+            }
         }
     }
 
@@ -244,6 +475,19 @@ impl<'a> GVMeGnerator<'a> {
                 .unwrap();
             return LabelIdx(num);
         }
-        panic!();
+        panic!("label was {}", str_lbl);
+    }
+
+    fn const_in_acc(&mut self, val: &i64) {
+        let loc = self.memory.get_const_loc_or_aloc(val);
+        self.code.push(GVMe::LOAD(loc.memory_address));
+    }
+
+    fn get_const_loc(&mut self, val: &i64) -> VarLoc {
+        let loc = self.memory.get_const_loc_or_aloc(val);
+        VarLoc {
+            loc: loc.memory_address,
+            is_pointer: false,
+        }
     }
 }

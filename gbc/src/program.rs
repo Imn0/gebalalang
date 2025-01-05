@@ -1,6 +1,7 @@
 use crate::ast::Ast;
 use crate::code_gen::IrProgram;
 use crate::message::{DisplayMessage, Message, MessageSeverity};
+use crate::try_or_err;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -29,6 +30,7 @@ pub struct Config {
     pub set_out_to_exe: bool,
     pub run: bool,
     pub run_cmd: Command,
+    pub save_ir: bool,
 }
 
 pub enum Targets {
@@ -48,6 +50,7 @@ impl Default for Config {
             set_out_to_exe: false,
             run: false,
             run_cmd: Command::new(""),
+            save_ir: false,
         }
     }
 }
@@ -75,7 +78,29 @@ impl Program {
     }
 
     pub fn save_compiled(&mut self) -> Result<(), ()> {
-        let path = &self.config.output_path;
+        try_or_err!(self.save_stuff_to_location(
+            &self.output,
+            &self.config.output_path,
+            self.config.set_out_to_exe,
+        ));
+
+        if self.config.save_ir {
+            try_or_err!(self.save_stuff_to_location(
+                &self.ir_program.to_string().as_bytes().into(),
+                &format!("{}.ir", self.config.output_path),
+                false,
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn save_stuff_to_location(
+        &self,
+        stuff: &Box<[u8]>,
+        path: &str,
+        set_to_exe: bool,
+    ) -> Result<(), ()> {
         let r2 = OpenOptions::new()
             .create(true)
             .write(true)
@@ -93,10 +118,8 @@ impl Program {
             });
             return Err(());
         }
-
         let mut file = r2.unwrap();
-
-        let r3 = file.write_all(&self.output);
+        let r3 = file.write_all(stuff);
 
         if let Err(err) = r3 {
             self.print_message(Message::GeneralMessage {
@@ -110,7 +133,7 @@ impl Program {
             return Err(());
         }
 
-        if self.config.set_out_to_exe {
+        if set_to_exe {
             let metadata = fs::metadata(path).unwrap();
             let mut permissions = metadata.permissions();
             permissions.set_mode(0o755);
