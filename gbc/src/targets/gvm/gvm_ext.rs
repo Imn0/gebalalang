@@ -391,6 +391,7 @@ impl<'a> GVMeGnerator<'a> {
                 let mut dest_loc = self.get_var_location(dest);
                 if dest_loc.loc == 0 {
                     dest_loc.loc = self.last_mem_slot + 1;
+                    self.code.push(GVMe::STORE(self.last_mem_slot + 1));
                 }
 
                 self.compile_load_loc_to_acc(&VarLoc {
@@ -431,6 +432,8 @@ impl<'a> GVMeGnerator<'a> {
                 let mut dest_loc = self.get_var_location(dest);
                 if dest_loc.loc == 0 {
                     dest_loc.loc = self.last_mem_slot + 1;
+                    self.code.push(GVMe::STORE(self.last_mem_slot + 1));
+
                 }
 
                 self.compile_load_loc_to_acc(&VarLoc {
@@ -475,6 +478,8 @@ impl<'a> GVMeGnerator<'a> {
                 let mut dest_loc = self.get_var_location(dest);
                 if dest_loc.loc == 0 {
                     dest_loc.loc = self.last_mem_slot + 1;
+                    self.code.push(GVMe::STORE(self.last_mem_slot + 1));
+
                 }
 
                 self.compile_load_loc_to_acc(&VarLoc {
@@ -504,32 +509,32 @@ impl<'a> GVMeGnerator<'a> {
                 Some(())
             }
             IR::JZero { left, right, label } => {
-                self.compile_sub_res_in_acc(left, right);
+                self.compile_comparison(left, right);
                 self.code.push(GVMe::jz(self.get_label(&label)));
                 Some(())
             }
             IR::JNotZero { left, right, label } => {
-                self.compile_sub_res_in_acc(left, right);
+                self.compile_comparison(left, right);
                 self.code.push(GVMe::jnz(self.get_label(label)));
                 Some(())
             }
             IR::JPositive { left, right, label } => {
-                self.compile_sub_res_in_acc(left, right);
+                self.compile_comparison(left, right);
                 self.code.push(GVMe::jpos(self.get_label(label)));
                 Some(())
             }
             IR::JNegative { left, right, label } => {
-                self.compile_sub_res_in_acc(left, right);
+                self.compile_comparison(left, right);
                 self.code.push(GVMe::jneg(self.get_label(label)));
                 Some(())
             }
             IR::JPositiveOrZero { left, right, label } => {
-                self.compile_sub_res_in_acc(left, right);
+                self.compile_comparison(left, right);
                 self.code.push(GVMe::jposz(self.get_label(label)));
                 Some(())
             }
             IR::JNegativeOrZero { left, right, label } => {
-                self.compile_sub_res_in_acc(left, right);
+                self.compile_comparison(left, right);
                 self.code.push(GVMe::jnegz(self.get_label(label)));
                 Some(())
             }
@@ -598,10 +603,10 @@ impl<'a> GVMeGnerator<'a> {
         }
     }
 
-    fn compile_sub_res_in_acc(&mut self, left: &IrOperand, right: &IrOperand) {
+    fn compile_comparison(&mut self, left: &IrOperand, right: &IrOperand) {
         if let (Some(left_loc), Some(right_loc)) = (
-            self.get_var_location_no_extra_cmds(left),
             self.get_var_location_no_extra_cmds(right),
+            self.get_var_location_no_extra_cmds(left),
         ) {
             if left_loc.is_pointer {
                 self.code.push(GVMe::LOADI(left_loc.loc));

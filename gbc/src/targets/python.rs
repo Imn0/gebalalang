@@ -150,49 +150,49 @@ fn compile_op(ir_op: &IR) -> String {
         }
         IR::JZero { left, right, label } => {
             format!(
-                "if {} == {}: raise JumpException(\"{}\")",
-                get_ir_operand(left),
+                "if {} - {} == 0: raise JumpException(\"{}\")",
                 get_ir_operand(right),
+                get_ir_operand(left),
                 label
             )
         }
         IR::JNotZero { left, right, label } => {
             format!(
-                "if {} != {}: raise JumpException(\"{}\")",
-                get_ir_operand(left),
+                "if {} - {} != 0: raise JumpException(\"{}\")",
                 get_ir_operand(right),
+                get_ir_operand(left),
                 label
             )
         }
         IR::JPositive { left, right, label } => {
             format!(
-                "if {} > {}: raise JumpException(\"{}\")",
-                get_ir_operand(left),
+                "if {} - {} > 0: raise JumpException(\"{}\")",
                 get_ir_operand(right),
+                get_ir_operand(left),
                 label
             )
         }
         IR::JNegative { left, right, label } => {
             format!(
-                "if {} < {}: raise JumpException(\"{}\")",
-                get_ir_operand(left),
+                "if {} - {} < 0: raise JumpException(\"{}\")",
                 get_ir_operand(right),
+                get_ir_operand(left),
                 label
             )
         }
         IR::JPositiveOrZero { left, right, label } => {
             format!(
-                "if {} >= {}: raise JumpException(\"{}\")",
-                get_ir_operand(left),
+                "if {} - {} >= 0: raise JumpException(\"{}\")",
                 get_ir_operand(right),
+                get_ir_operand(left),
                 label
             )
         }
         IR::JNegativeOrZero { left, right, label } => {
             format!(
-                "if {} <= {}: raise JumpException(\"{}\")",
-                get_ir_operand(left),
+                "if {} - {} <= 0: raise JumpException(\"{}\")",
                 get_ir_operand(right),
+                get_ir_operand(left),
                 label
             )
         }

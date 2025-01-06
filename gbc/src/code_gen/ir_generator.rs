@@ -130,7 +130,7 @@ impl IrProgram {
                 let mut v = vec![];
 
                 let loop_start_lbl = self.new_label("repeat_back");
-
+                v.push(IR::Label(loop_start_lbl.clone()));
                 v.append(&mut self.compile_commands(commands));
                 v.push(self.compile_condition(condition, &loop_start_lbl));
 
@@ -180,15 +180,15 @@ impl IrProgram {
                 match direction {
                     crate::ast::ForDirection::Ascending => {
                         v.push(IR::JPositive {
-                            left: for_iter.clone(),
-                            right: for_cnt.clone(),
+                            right: for_iter.clone(),
+                            left: for_cnt.clone(),
                             label: loop_exit.clone(),
                         });
                     }
                     crate::ast::ForDirection::Descending => {
                         v.push(IR::JNegative {
-                            left: for_iter.clone(),
-                            right: for_cnt.clone(),
+                            right: for_iter.clone(),
+                            left: for_cnt.clone(),
                             label: loop_exit.clone(),
                         });
                     }
