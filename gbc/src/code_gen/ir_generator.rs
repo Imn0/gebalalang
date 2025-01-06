@@ -204,7 +204,7 @@ impl IrProgram {
                         });
                     }
                     crate::ast::ForDirection::Descending => {
-                        v.push(IR::Add {
+                        v.push(IR::Sub {
                             dest: for_iter.clone(),
                             left: for_iter.clone(),
                             right: one,
