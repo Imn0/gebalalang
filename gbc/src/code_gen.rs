@@ -22,7 +22,7 @@ pub struct ProcedureInfo {
 pub struct IrProgram {
     pub main: Vec<IR>,
     pub procedures: HashMap<String, ProcedureInfo>,
-    next_label: usize,
+    pub next_label: usize,
     current_scope: String,
 }
 

@@ -72,6 +72,20 @@ impl Memory {
         self.allocate(scoped_name, is_array, true)
     }
 
+    pub fn allocate_builtin_arg(&mut self, name: &str, scope: &str) -> SymbolLocation {
+        let arg_scoped_name = scoped_name(&name, scope);
+
+        let loc = SymbolLocation {
+            memory_address: self.next_memory_slot,
+            is_array: false,
+            is_pointer: false,
+        };
+
+        self.symbols.insert(arg_scoped_name, loc.clone());
+        self.next_memory_slot += 1;
+        return loc;
+    }
+
     pub fn allocate_proc_return(&mut self, name: &str) -> usize {
         self.symbols.insert(
             name.to_owned(),
@@ -112,18 +126,18 @@ impl Memory {
         self.symbols.remove(&scoped_name);
     }
 
-    pub fn get_base_loc(&self, name: &str, scope: &str) -> &SymbolLocation {
+    pub fn get_base_loc(&mut self, name: &str, scope: &str) -> &SymbolLocation {
         let scoped_name = scoped_name(name, scope);
         self.symbols.get(&scoped_name).unwrap()
     }
 
-    pub fn get_const(&self, constant: &i64) -> &SymbolLocation {
+    pub fn get_const(&mut self, constant: &i64) -> &SymbolLocation {
         let c_name = constant_name(constant);
         self.symbols.get(&c_name).unwrap()
     }
 
-    pub fn get_constants(&self) -> Vec<&i64> {
-        return self.constants.iter().collect();
+    pub fn get_constants(&mut self) -> Vec<i64> {
+        return self.constants.clone().iter().copied().collect();
     }
 
     pub fn get_const_loc_or_aloc(&mut self, constant: &i64) -> &SymbolLocation {

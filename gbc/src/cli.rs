@@ -45,7 +45,7 @@ pub struct CliArgs {
     run_path: String,
 
     #[arg(long, action = clap::ArgAction::SetTrue, help="Wheter to save IR of the program")]
-    emmit_ir: bool,
+    emit_ir: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
@@ -108,7 +108,7 @@ impl Program {
             self.config.run_cmd.arg(self.config.output_path.clone());
         }
 
-        self.config.save_ir = cli.emmit_ir;
+        self.config.save_ir = cli.emit_ir;
 
         Ok(())
     }

@@ -274,6 +274,7 @@ fn distance_to_label(code: &Vec<GVMe>, from: usize, label_code: usize) -> i64 {
         }
     }
     if !initialized {
+        println!("{:#?}", code);
         unreachable!("THERE IS NO LABEL {}", label_code);
     }
 
