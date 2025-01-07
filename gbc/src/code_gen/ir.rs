@@ -127,7 +127,7 @@ impl fmt::Display for IR {
                         write!(f, "jposz {} {} {}", label, left, right)
                     }
                     IR::JNegativeOrZero { left, right, label } => {
-                        write!(f, "jnegz{} {} {}", label, left, right)
+                        write!(f, "jnegz {} {} {}", label, left, right)
                     }
                     IR::Call {
                         procedure,

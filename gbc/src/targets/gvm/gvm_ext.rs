@@ -13,7 +13,7 @@ use crate::code_gen::{
 
 use super::memory::Memory;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct LabelIdx(pub usize);
 
 #[allow(non_camel_case_types)]
@@ -279,8 +279,6 @@ impl<'a> GVMeGnerator<'a> {
                 }
             }
             IR::Add { dest, left, right } => {
-                // TODO extra cmds
-
                 if let (Some(dest_loc), Some(left_loc), Some(right_loc)) = (
                     self.get_var_location_no_extra_cmds(dest),
                     self.get_var_location_no_extra_cmds(left),
@@ -325,8 +323,6 @@ impl<'a> GVMeGnerator<'a> {
                 Some(())
             }
             IR::Sub { dest, left, right } => {
-                // TODO extra cmds
-
                 if let (Some(dest_loc), Some(left_loc), Some(right_loc)) = (
                     self.get_var_location_no_extra_cmds(dest),
                     self.get_var_location_no_extra_cmds(left),
@@ -347,6 +343,12 @@ impl<'a> GVMeGnerator<'a> {
                         dst_loc.loc = self.last_mem_slot;
                     }
 
+                    let mut right_loc = self.get_var_location(right);
+                    if right_loc.loc == 0 {
+                        self.code.push(GVMe::STORE(self.last_mem_slot - 1));
+                        right_loc.loc = self.last_mem_slot - 1;
+                    }
+
                     let left_loc = self.get_var_location(left);
                     if left_loc.is_pointer {
                         self.code.push(GVMe::LOADI(left_loc.loc));
@@ -354,16 +356,10 @@ impl<'a> GVMeGnerator<'a> {
                         self.code.push(GVMe::LOAD(left_loc.loc));
                     }
 
-                    let mut right_loc = self.get_var_location(right);
-                    if right_loc.loc == 0 {
-                        self.code.push(GVMe::STORE(self.last_mem_slot - 1));
-                        right_loc.loc = self.last_mem_slot - 1;
-                    }
-
-                    if left_loc.is_pointer {
-                        self.code.push(GVMe::ADDI(left_loc.loc));
+                    if right_loc.is_pointer {
+                        self.code.push(GVMe::SUBI(right_loc.loc));
                     } else {
-                        self.code.push(GVMe::ADD(left_loc.loc));
+                        self.code.push(GVMe::SUB(right_loc.loc));
                     }
 
                     self.compile_store_acc_to_loc(&dst_loc);
@@ -433,7 +429,6 @@ impl<'a> GVMeGnerator<'a> {
                 if dest_loc.loc == 0 {
                     dest_loc.loc = self.last_mem_slot + 1;
                     self.code.push(GVMe::STORE(self.last_mem_slot + 1));
-
                 }
 
                 self.compile_load_loc_to_acc(&VarLoc {
@@ -479,7 +474,6 @@ impl<'a> GVMeGnerator<'a> {
                 if dest_loc.loc == 0 {
                     dest_loc.loc = self.last_mem_slot + 1;
                     self.code.push(GVMe::STORE(self.last_mem_slot + 1));
-
                 }
 
                 self.compile_load_loc_to_acc(&VarLoc {
@@ -1120,10 +1114,41 @@ impl<'a> GVMeGnerator<'a> {
             name: format!(""),
         });
 
+        self.code.push(GVMe::LOAD(sign_flag));
+        let skip_div_sign = self.next_label();
+        let div_is_neg = self.next_label();
+        self.code.push(GVMe::jpos(skip_div_sign.clone()));
+
+        self.const_in_acc(&zero);
+        self.code.push(GVMe::SUB(quotient));
+        self.code.push(GVMe::lbl_jump(div_is_neg));
+        self.code.push(GVMe::lbl {
+            idx: skip_div_sign,
+            name: format!(""),
+        });
         self.code.push(GVMe::LOAD(quotient));
+        self.code.push(GVMe::lbl {
+            idx: div_is_neg,
+            name: format!(""),
+        });
         self.code.push(GVMe::STORE(div_res));
 
+        let skip_mod_sign = self.next_label();
+        let mod_is_neg = self.next_label();
+        self.code.push(GVMe::LOAD(mod_final_sign));
+        self.code.push(GVMe::jpos(skip_mod_sign.clone()));
+        self.const_in_acc(&zero);
+        self.code.push(GVMe::SUB(arg1));
+        self.code.push(GVMe::lbl_jump(mod_is_neg));
+        self.code.push(GVMe::lbl {
+            idx: skip_mod_sign,
+            name: format!(""),
+        });
         self.code.push(GVMe::LOAD(arg1));
+        self.code.push(GVMe::lbl {
+            idx: mod_is_neg,
+            name: format!(""),
+        });
         self.code.push(GVMe::STORE(mod_res));
         self.code.push(GVMe::RTRN(proc_info.return_address));
     }
