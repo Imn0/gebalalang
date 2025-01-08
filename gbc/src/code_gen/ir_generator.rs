@@ -1,3 +1,5 @@
+use std::ops::Not;
+
 use crate::ast::{
     Ast, Command, Condition, Declaration, Expression, Identifier, MainBlock, Procedure, Value,
 };
@@ -87,7 +89,7 @@ impl IrProgram {
                 let true_lbl = self.new_label("ifelse_true");
                 let false_lbl = self.new_label("ifelse_false");
                 let mut v = vec![];
-                v.push(self.compile_condition(condition, &false_lbl));
+                v.push(self.compile_condition(&condition.clone(), &false_lbl));
                 v.append(&mut self.compile_commands(then_commands));
                 v.push(IR::Jump(true_lbl.clone()));
                 v.push(IR::Label(false_lbl));
@@ -116,7 +118,7 @@ impl IrProgram {
                 let while_after = self.new_label("while_done");
                 let mut v = vec![];
                 v.push(IR::Label(while_start.clone()));
-                v.push(self.compile_condition(condition, &while_after));
+                v.push(self.compile_condition(&condition.clone(), &while_after));
                 v.append(&mut self.compile_commands(commands));
                 v.push(IR::Jump(while_start));
                 v.push(IR::Label(while_after));
@@ -132,7 +134,7 @@ impl IrProgram {
                 let loop_start_lbl = self.new_label("repeat_back");
                 v.push(IR::Label(loop_start_lbl.clone()));
                 v.append(&mut self.compile_commands(commands));
-                v.push(self.compile_condition(condition, &loop_start_lbl));
+                v.push(self.compile_condition(&condition.clone(), &loop_start_lbl));
 
                 v
             }
@@ -180,15 +182,15 @@ impl IrProgram {
                 match direction {
                     crate::ast::ForDirection::Ascending => {
                         v.push(IR::JPositive {
-                            right: for_iter.clone(),
-                            left: for_cnt.clone(),
+                            left: for_iter.clone(),
+                            right: for_cnt.clone(),
                             label: loop_exit.clone(),
                         });
                     }
                     crate::ast::ForDirection::Descending => {
                         v.push(IR::JNegative {
-                            right: for_iter.clone(),
-                            left: for_cnt.clone(),
+                            left: for_iter.clone(),
+                            right: for_cnt.clone(),
                             label: loop_exit.clone(),
                         });
                     }
@@ -271,12 +273,12 @@ impl IrProgram {
                 right: self.generate_value(value1),
                 label: lbl_name.to_owned(),
             },
-            Condition::GreaterOrEqual(value, value1) => IR::JPositive {
+            Condition::GreaterOrEqual(value, value1) => IR::JNegative {
                 left: self.generate_value(value),
                 right: self.generate_value(value1),
                 label: lbl_name.to_owned(),
             },
-            Condition::LessOrEqual(value, value1) => IR::JNegative {
+            Condition::LessOrEqual(value, value1) => IR::JPositive {
                 left: self.generate_value(value),
                 right: self.generate_value(value1),
                 label: lbl_name.to_owned(),

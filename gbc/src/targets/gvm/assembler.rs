@@ -230,7 +230,7 @@ pub fn assemble(gvme: &Vec<GVMe>, procs: &HashMap<String, GVMeProc>) -> Vec<GVM>
             GVMe::jposz(idx) => {
                 let jump_dist = distance_to_label(gvme, i, idx.clone().0);
 
-                asm_code.push(GVM::JPOS(2));
+                asm_code.push(GVM::JNEG(2));
                 if jump_dist < 0 {
                     asm_code.push(GVM::JUMP(jump_dist - 1));
                 } else if jump_dist > 0 {
@@ -240,7 +240,7 @@ pub fn assemble(gvme: &Vec<GVMe>, procs: &HashMap<String, GVMeProc>) -> Vec<GVM>
             GVMe::jnegz(idx) => {
                 let jump_dist = distance_to_label(gvme, i, idx.clone().0);
 
-                asm_code.push(GVM::JNEG(2));
+                asm_code.push(GVM::JPOS(2));
                 if jump_dist < 0 {
                     asm_code.push(GVM::JUMP(jump_dist - 1));
                 } else if jump_dist > 0 {

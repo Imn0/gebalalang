@@ -1,7 +1,7 @@
 use std::process::Command;
 
 use crate::program::Program;
-use crate::program::Targets;
+use crate::program::Target;
 use clap::parser::ValueSource;
 use clap::CommandFactory;
 use clap::{Parser, ValueEnum};
@@ -48,12 +48,6 @@ pub struct CliArgs {
     emit_ir: bool,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
-enum Target {
-    GVM,
-    Python,
-}
-
 impl Program {
     pub fn configure_args(&mut self, cli: CliArgs) -> Result<(), ()> {
         let matches = CliArgs::command().get_matches();
@@ -71,25 +65,20 @@ impl Program {
 
         let out_default = matches.value_source("output_file") == Some(ValueSource::DefaultValue);
 
-        match cli.target {
-            Target::GVM => {
-                self.config.target = {
-                    if out_default {
-                        self.config.output_path = "a.mr".to_owned();
-                    }
-                    Targets::GVM
+        if out_default {
+            match cli.target {
+                Target::GVM => {
+                    self.config.output_path = "a.mr".to_owned();
                 }
-            }
-            Target::Python => {
-                self.config.target = {
-                    if out_default {
-                        self.config.output_path = "a.py".to_owned();
-                    }
-                    self.config.set_out_to_exe = true;
-                    Targets::PYTHON
+                Target::Python => {
+                    self.config.output_path = "a.py".to_owned();
+                }
+                Target::X86_64_LinuxUnknown => {
+                    self.config.output_path = "a.A".to_owned();
                 }
             }
         }
+        self.config.target = cli.target;
 
         self.config.run = cli.run;
         if cli.run {
@@ -100,6 +89,9 @@ impl Program {
                     }
                     Target::Python => {
                         self.config.run_cmd = Command::new("python3");
+                    }
+                    Target::X86_64_LinuxUnknown => {
+                        self.config.run_cmd = Command::new("gcc");
                     }
                 }
             } else {

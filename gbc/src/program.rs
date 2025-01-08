@@ -1,3 +1,5 @@
+use clap::ValueEnum;
+
 use crate::ast::Ast;
 use crate::code_gen::IrProgram;
 use crate::message::{DisplayMessage, Message, MessageSeverity};
@@ -20,11 +22,18 @@ pub struct Program {
     pub ast: Ast,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
+pub enum Target {
+    GVM,
+    Python,
+    X86_64_LinuxUnknown,
+}
+
 pub struct Config {
     pub verbose: bool,
     pub werror: bool,
     pub procedure_separate_namespace: bool,
-    pub target: Targets,
+    pub target: Target,
     pub source_path: String,
     pub output_path: String,
     pub set_out_to_exe: bool,
@@ -33,18 +42,13 @@ pub struct Config {
     pub save_ir: bool,
 }
 
-pub enum Targets {
-    GVM,
-    PYTHON,
-}
-
 impl Default for Config {
     fn default() -> Self {
         Config {
             verbose: false,
             werror: true,
             procedure_separate_namespace: false,
-            target: Targets::GVM,
+            target: Target::GVM,
             source_path: "".to_owned(),
             output_path: "".to_owned(),
             set_out_to_exe: false,

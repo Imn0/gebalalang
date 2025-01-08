@@ -599,8 +599,8 @@ impl<'a> GVMeGnerator<'a> {
 
     fn compile_comparison(&mut self, left: &IrOperand, right: &IrOperand) {
         if let (Some(left_loc), Some(right_loc)) = (
-            self.get_var_location_no_extra_cmds(right),
             self.get_var_location_no_extra_cmds(left),
+            self.get_var_location_no_extra_cmds(right),
         ) {
             if left_loc.is_pointer {
                 self.code.push(GVMe::LOADI(left_loc.loc));
@@ -784,6 +784,9 @@ impl<'a> GVMeGnerator<'a> {
                 .memory_address,
         );
 
+        self.memory.allocate_builtin_arg("last_arg1", &proc_name);
+        self.memory.allocate_builtin_arg("last_arg2", &proc_name);
+
         self.next_available_label += 1;
         GVMeProc {
             label: LabelIdx(self.next_available_label - 1),
@@ -817,6 +820,9 @@ impl<'a> GVMeGnerator<'a> {
                 .memory_address,
         );
 
+        self.memory.allocate_builtin_arg("last_arg1", &proc_name);
+        self.memory.allocate_builtin_arg("last_arg2", &proc_name);
+
         self.next_available_label += 1;
         GVMeProc {
             label: LabelIdx(self.next_available_label - 1),
@@ -838,6 +844,14 @@ impl<'a> GVMeGnerator<'a> {
         let arg1 = proc_info.args[0];
         let arg2 = proc_info.args[1];
         let res = proc_info.args[2];
+
+        let last_arg1 = self
+            .memory
+            .get_base_loc("last_arg1", &BUILTINS::MUL.to_name()).memory_address;
+
+        let last_arg2 = self
+            .memory
+            .get_base_loc("last_arg2", &BUILTINS::MUL.to_name()).memory_address;
 
         let zero = 0;
         let one = 1;
@@ -887,9 +901,19 @@ impl<'a> GVMeGnerator<'a> {
             idx: arg_2_pos,
             name: format!(""),
         });
+//TODO VVVVVV
+// SWAP ARGS SO THE SMALLER ONE IS SECOND
 
+
+// CHECK IF LAST ARGS ARE THE SAME 
+
+
+
+// STORE CURRENT ARGS TO LAST ARGS 
+
+
+// CARRY ON
         self.code.push(GVMe::LOAD(arg1));
-
         self.code.push(GVMe::lbl {
             idx: loop_start_lbl.clone(),
             name: format!(""),
@@ -968,11 +992,12 @@ impl<'a> GVMeGnerator<'a> {
         let zero = 0;
         let one = 1;
         let m_one = -1;
-        let sign_flag = self.last_mem_slot;
-        let mod_final_sign = self.last_mem_slot - 1;
+        let arg1_positive = self.last_mem_slot;
+        let arg2_positive = self.last_mem_slot - 1;
 
-        let quotient = self.last_mem_slot - 2;
-        let power_of_two = self.last_mem_slot - 3;
+        let power_of_two = self.last_mem_slot - 2;
+
+        let arg2_cpy = self.last_mem_slot - 3;
 
         let arg_1_pos = self.next_label();
         let arg_2_pos = self.next_label();
@@ -991,15 +1016,15 @@ impl<'a> GVMeGnerator<'a> {
 
         // sign = 1, mod_sign = 1
         self.const_in_acc(&one);
-        self.code.push(GVMe::STORE(sign_flag));
-        self.code.push(GVMe::STORE(mod_final_sign));
+        self.code.push(GVMe::STORE(arg1_positive));
+        self.code.push(GVMe::STORE(arg2_positive));
 
         // if arg1 < 0
         self.code.push(GVMe::LOAD(arg1));
         self.code.push(GVMe::jpos(arg_1_pos.clone()));
 
         self.const_in_acc(&m_one);
-        self.code.push(GVMe::STORE(sign_flag));
+        self.code.push(GVMe::STORE(arg1_positive));
         self.const_in_acc(&zero);
         self.code.push(GVMe::SUB(arg1));
         self.code.push(GVMe::STORE(arg1));
@@ -1013,13 +1038,8 @@ impl<'a> GVMeGnerator<'a> {
         self.code.push(GVMe::LOAD(arg2));
         self.code.push(GVMe::jpos(arg_2_pos.clone()));
 
-        self.const_in_acc(&zero);
-        self.code.push(GVMe::SUB(sign_flag));
-        self.code.push(GVMe::STORE(sign_flag));
-
-        self.const_in_acc(&zero);
-        self.code.push(GVMe::SUB(mod_final_sign));
-        self.code.push(GVMe::STORE(mod_final_sign));
+        self.const_in_acc(&m_one);
+        self.code.push(GVMe::STORE(arg2_positive));
 
         self.const_in_acc(&zero);
         self.code.push(GVMe::SUB(arg2));
@@ -1029,9 +1049,26 @@ impl<'a> GVMeGnerator<'a> {
             idx: arg_2_pos,
             name: format!(""),
         });
+        self.code.push(GVMe::STORE(arg2_cpy));
+
+//TODO VVVVVV
+
+
+// CHECK IF LAST ARGS ARE THE SAME 
+
+
+
+// STORE CURRENT ARGS TO LAST ARGS 
+
+
+// CARRY ON
+
+
+
+        
 
         self.const_in_acc(&zero);
-        self.code.push(GVMe::STORE(quotient));
+        self.code.push(GVMe::STORE(div_res));
 
         self.const_in_acc(&one);
         self.code.push(GVMe::STORE(power_of_two));
@@ -1082,7 +1119,7 @@ impl<'a> GVMeGnerator<'a> {
             name: format!(""),
         });
         self.code.push(GVMe::LOAD(power_of_two));
-        self.code.push(GVMe::jposz(loop2_end.clone()));
+        self.code.push(GVMe::jnegz(loop2_end.clone()));
 
         self.code.push(GVMe::LOAD(arg1));
         self.code.push(GVMe::SUB(arg2));
@@ -1091,9 +1128,9 @@ impl<'a> GVMeGnerator<'a> {
         self.code.push(GVMe::SUB(arg2));
         self.code.push(GVMe::STORE(arg1));
 
-        self.code.push(GVMe::LOAD(quotient));
+        self.code.push(GVMe::LOAD(div_res));
         self.code.push(GVMe::ADD(power_of_two));
-        self.code.push(GVMe::STORE(quotient));
+        self.code.push(GVMe::STORE(div_res));
 
         self.code.push(GVMe::lbl {
             idx: inner_if_fail,
@@ -1114,42 +1151,61 @@ impl<'a> GVMeGnerator<'a> {
             name: format!(""),
         });
 
-        self.code.push(GVMe::LOAD(sign_flag));
-        let skip_div_sign = self.next_label();
-        let div_is_neg = self.next_label();
-        self.code.push(GVMe::jpos(skip_div_sign.clone()));
+        // arg1 positive
+        let arg1_is_in_fact_negative = self.next_label();
+        self.code.push(GVMe::LOAD(arg1_positive));
+        self.code.push(GVMe::jneg(arg1_is_in_fact_negative));
 
-        self.const_in_acc(&zero);
-        self.code.push(GVMe::SUB(quotient));
-        self.code.push(GVMe::lbl_jump(div_is_neg));
+        // arg1 pos, arg2 pos
+        let arg1_pos_and_arg2_negative = self.next_label();
+        self.code.push(GVMe::LOAD(arg2_positive));
+        self.code.push(GVMe::jneg(arg1_pos_and_arg2_negative));
+        // x>0 y>0 -> nothing
+        self.code.push(GVMe::LOAD(arg1));
+        self.code.push(GVMe::STORE(mod_res));
+        self.code.push(GVMe::RTRN(proc_info.return_address));
+
+        // arg1 pos, arg2 neg
         self.code.push(GVMe::lbl {
-            idx: skip_div_sign,
+            idx: arg1_pos_and_arg2_negative,
             name: format!(""),
         });
-        self.code.push(GVMe::LOAD(quotient));
-        self.code.push(GVMe::lbl {
-            idx: div_is_neg,
-            name: format!(""),
-        });
+        // x>0 y<0 -> q = -1 - q and r = r - y
+        self.const_in_acc(&m_one);
+        self.code.push(GVMe::SUB(div_res));
         self.code.push(GVMe::STORE(div_res));
+        self.code.push(GVMe::LOAD(arg1));
+        self.code.push(GVMe::SUB(arg2_cpy));
+        self.code.push(GVMe::STORE(mod_res));
+        self.code.push(GVMe::RTRN(proc_info.return_address));
 
-        let skip_mod_sign = self.next_label();
-        let mod_is_neg = self.next_label();
-        self.code.push(GVMe::LOAD(mod_final_sign));
-        self.code.push(GVMe::jpos(skip_mod_sign.clone()));
+        // arg1 negative
+        self.code.push(GVMe::lbl {
+            idx: arg1_is_in_fact_negative,
+            name: format!(""),
+        });
+
+        let arg1_neg_and_arg2_neg = self.next_label();
+        self.code.push(GVMe::LOAD(arg2_positive));
+        self.code.push(GVMe::jneg(arg1_neg_and_arg2_neg));
+        // x<0 y>0 -> q = -1 - q and r = y - r
+        self.const_in_acc(&m_one);
+        self.code.push(GVMe::SUB(div_res));
+        self.code.push(GVMe::STORE(div_res));
+        self.code.push(GVMe::LOAD(arg2_cpy));
+        self.code.push(GVMe::SUB(arg1));
+        self.code.push(GVMe::STORE(mod_res));
+        self.code.push(GVMe::RTRN(proc_info.return_address));
+
+        self.code.push(GVMe::lbl {
+            idx: arg1_neg_and_arg2_neg,
+            name: format!(""),
+        });
+        // x<0 y<0 -> r = -r
         self.const_in_acc(&zero);
         self.code.push(GVMe::SUB(arg1));
-        self.code.push(GVMe::lbl_jump(mod_is_neg));
-        self.code.push(GVMe::lbl {
-            idx: skip_mod_sign,
-            name: format!(""),
-        });
-        self.code.push(GVMe::LOAD(arg1));
-        self.code.push(GVMe::lbl {
-            idx: mod_is_neg,
-            name: format!(""),
-        });
         self.code.push(GVMe::STORE(mod_res));
+
         self.code.push(GVMe::RTRN(proc_info.return_address));
     }
 

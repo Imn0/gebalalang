@@ -151,48 +151,48 @@ fn compile_op(ir_op: &IR) -> String {
         IR::JZero { left, right, label } => {
             format!(
                 "if {} - {} == 0: raise JumpException(\"{}\")",
-                get_ir_operand(right),
                 get_ir_operand(left),
+                get_ir_operand(right),
                 label
             )
         }
         IR::JNotZero { left, right, label } => {
             format!(
                 "if {} - {} != 0: raise JumpException(\"{}\")",
-                get_ir_operand(right),
                 get_ir_operand(left),
+                get_ir_operand(right),
                 label
             )
         }
         IR::JPositive { left, right, label } => {
             format!(
                 "if {} - {} > 0: raise JumpException(\"{}\")",
-                get_ir_operand(right),
                 get_ir_operand(left),
+                get_ir_operand(right),
                 label
             )
         }
         IR::JNegative { left, right, label } => {
             format!(
                 "if {} - {} < 0: raise JumpException(\"{}\")",
-                get_ir_operand(right),
                 get_ir_operand(left),
+                get_ir_operand(right),
                 label
             )
         }
         IR::JPositiveOrZero { left, right, label } => {
             format!(
                 "if {} - {} >= 0: raise JumpException(\"{}\")",
-                get_ir_operand(right),
                 get_ir_operand(left),
+                get_ir_operand(right),
                 label
             )
         }
         IR::JNegativeOrZero { left, right, label } => {
             format!(
                 "if {} - {} <= 0: raise JumpException(\"{}\")",
-                get_ir_operand(right),
                 get_ir_operand(left),
+                get_ir_operand(right),
                 label
             )
         }

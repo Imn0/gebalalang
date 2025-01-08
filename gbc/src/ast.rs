@@ -3,7 +3,10 @@ use crate::{
     program::Program,
 };
 
-use std::{collections::HashMap, ops::Not};
+use std::{
+    collections::HashMap,
+    ops::{self, Not},
+};
 use tree_sitter::{Node, Tree};
 use tree_sitter_gbl::LANGUAGE;
 
@@ -116,7 +119,7 @@ pub enum Condition {
     LessOrEqual(Value, Value),
 }
 
-impl Not for Condition {
+impl ops::Not for Condition {
     type Output = Condition;
 
     fn not(self) -> Condition {
@@ -316,7 +319,7 @@ impl Program {
             declarations,
             commands,
             location: proc_head_node.get_location(),
-            prio: self.ast.proc_count - 1
+            prio: self.ast.proc_count - 1,
         }
     }
 
