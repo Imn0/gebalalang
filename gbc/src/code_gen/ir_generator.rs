@@ -1,5 +1,3 @@
-use std::ops::Not;
-
 use crate::ast::{
     Ast, Command, Condition, Declaration, Expression, Identifier, MainBlock, Procedure, Value,
 };
