@@ -129,7 +129,7 @@ pub fn compile(ir_program: &IrProgram) -> GVMeProgram {
         memory: Memory::new(),
         proc_info: HashMap::new(),
         current_scope: "",
-        last_mem_slot: 0x4000000000000000,
+        last_mem_slot: 0x4000000000000000 - 32,
         next_available_label: 0,
         do_compile_mul: false,
         do_compile_mod_div: false,
@@ -367,6 +367,28 @@ impl<'a> GVMeGnerator<'a> {
                 }
             }
             IR::Mul { dest, left, right } => {
+                if let IrOperand::Constant(const_right) = right {
+                    if *const_right == 2 {
+                        let left_loc = self.get_var_location_not_acc(left, self.last_mem_slot);
+                        let dest_loc = self.get_var_location_not_acc(dest, self.last_mem_slot - 1);
+                        self.compile_load_loc_to_acc(&left_loc);
+                        self.code.push(GVMe::ADD(0));
+                        self.compile_store_acc_to_loc(&dest_loc);
+                        return Some(());
+                    }
+                }
+
+                if let IrOperand::Constant(const_left) = left {
+                    if *const_left == 2 {
+                        let right_loc = self.get_var_location_not_acc(right, self.last_mem_slot);
+                        let dest_loc = self.get_var_location_not_acc(dest, self.last_mem_slot - 1);
+                        self.compile_load_loc_to_acc(&right_loc);
+                        self.code.push(GVMe::ADD(0));
+                        self.compile_store_acc_to_loc(&dest_loc);
+                        return Some(());
+                    }
+                }
+
                 self.do_compile_mul = true;
 
                 let left_arg_loc = self.proc_info.get(BUILTINS::MUL.to_name()).unwrap().args[0];
@@ -400,6 +422,17 @@ impl<'a> GVMeGnerator<'a> {
                 Some(())
             }
             IR::Div { dest, left, right } => {
+                if let IrOperand::Constant(const_right) = right {
+                    if *const_right == 2 {
+                        let left_loc = self.get_var_location_not_acc(left, self.last_mem_slot);
+                        let dest_loc = self.get_var_location_not_acc(dest, self.last_mem_slot - 1);
+                        self.compile_load_loc_to_acc(&left_loc);
+                        self.code.push(GVMe::HALF);
+                        self.compile_store_acc_to_loc(&dest_loc);
+                        return Some(());
+                    }
+                }
+
                 self.do_compile_mod_div = true;
 
                 let left_arg_loc = self
@@ -738,6 +771,16 @@ impl<'a> GVMeGnerator<'a> {
         }
     }
 
+    fn get_var_location_not_acc(&mut self, operand: &IrOperand, where_to_put_it: usize) -> VarLoc {
+        let mut loc = self.get_var_location(operand);
+        if loc.loc == 0 {
+            loc.loc = where_to_put_it;
+            self.code.push(GVMe::STORE(where_to_put_it));
+        }
+
+        return loc;
+    }
+
     fn get_label(&self, str_lbl: &str) -> LabelIdx {
         let re = Regex::new(r"L\w*_i(\d+)").unwrap();
         if let Some(captures) = re.captures(str_lbl) {
@@ -847,11 +890,13 @@ impl<'a> GVMeGnerator<'a> {
 
         let last_arg1 = self
             .memory
-            .get_base_loc("last_arg1", &BUILTINS::MUL.to_name()).memory_address;
+            .get_base_loc("last_arg1", &BUILTINS::MUL.to_name())
+            .memory_address;
 
         let last_arg2 = self
             .memory
-            .get_base_loc("last_arg2", &BUILTINS::MUL.to_name()).memory_address;
+            .get_base_loc("last_arg2", &BUILTINS::MUL.to_name())
+            .memory_address;
 
         let zero = 0;
         let one = 1;
@@ -901,18 +946,14 @@ impl<'a> GVMeGnerator<'a> {
             idx: arg_2_pos,
             name: format!(""),
         });
-//TODO VVVVVV
-// SWAP ARGS SO THE SMALLER ONE IS SECOND
+        //TODO VVVVVV
+        // SWAP ARGS SO THE SMALLER ONE IS SECOND
 
+        // CHECK IF LAST ARGS ARE THE SAME
 
-// CHECK IF LAST ARGS ARE THE SAME 
+        // STORE CURRENT ARGS TO LAST ARGS
 
-
-
-// STORE CURRENT ARGS TO LAST ARGS 
-
-
-// CARRY ON
+        // CARRY ON
         self.code.push(GVMe::LOAD(arg1));
         self.code.push(GVMe::lbl {
             idx: loop_start_lbl.clone(),
@@ -1051,21 +1092,13 @@ impl<'a> GVMeGnerator<'a> {
         });
         self.code.push(GVMe::STORE(arg2_cpy));
 
-//TODO VVVVVV
+        //TODO VVVVVV
 
+        // CHECK IF LAST ARGS ARE THE SAME
 
-// CHECK IF LAST ARGS ARE THE SAME 
+        // STORE CURRENT ARGS TO LAST ARGS
 
-
-
-// STORE CURRENT ARGS TO LAST ARGS 
-
-
-// CARRY ON
-
-
-
-        
+        // CARRY ON
 
         self.const_in_acc(&zero);
         self.code.push(GVMe::STORE(div_res));

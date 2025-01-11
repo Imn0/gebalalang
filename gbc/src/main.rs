@@ -10,6 +10,7 @@ mod cli;
 mod code_gen;
 mod message;
 mod targets;
+mod ir_optimize;
 
 macro_rules! try_or_exit {
     ($expr:expr) => {
@@ -38,7 +39,8 @@ fn main() {
     try_or_exit!(p.ast_generate());
     try_or_exit!(p.ast_validate());
     // println!("{:#?}", p.ast);
-    try_or_exit!(p.gen_ir());
+    try_or_exit!(p.ir_gen());
+    try_or_exit!(p.ir_optimize());
     // println!("{}", p.ir_program);
     try_or_exit!(p.compile_to_target());
     try_or_exit!(p.save_compiled());

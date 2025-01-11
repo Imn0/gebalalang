@@ -27,7 +27,7 @@ pub struct IrProgram {
 }
 
 impl Program {
-    pub fn gen_ir(&mut self) -> Result<(), ()> {
+    pub fn ir_gen(&mut self) -> Result<(), ()> {
         self.ir_program.generate_program(&self.ast);
         Ok(())
     }
