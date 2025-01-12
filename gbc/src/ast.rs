@@ -411,8 +411,14 @@ impl Program {
         assert_eq!(node.kind(), "command");
         Command::IfElse {
             condition: self.gen_condition(node.child_by_field_name("condition").unwrap()),
-            then_commands: self.gen_commands(node.child_by_field_name("then_branch").unwrap()),
-            else_commands: self.gen_commands(node.child_by_field_name("else_branch").unwrap()),
+            then_commands: self.gen_commands_or_emppty(
+                node.child_by_field_name("then_branch"),
+                &node.get_location(),
+            ),
+            else_commands: self.gen_commands_or_emppty(
+                node.child_by_field_name("else_branch"),
+                &node.get_location(),
+            ),
             location: node.get_location(),
         }
     }
@@ -421,16 +427,38 @@ impl Program {
         assert_eq!(node.kind(), "command");
         Command::If {
             condition: self.gen_condition(node.child_by_field_name("condition").unwrap()),
-            then_commands: self.gen_commands(node.child_by_field_name("then_branch").unwrap()),
+            then_commands: self.gen_commands_or_emppty(
+                node.child_by_field_name("then_branch"),
+                &node.get_location(),
+            ),
             location: node.get_location(),
         }
+    }
+
+    fn gen_commands_or_emppty(
+        &mut self,
+        maybe_node: Option<Node>,
+        error_loc: &Location,
+    ) -> Vec<Command> {
+        let cmds = if let Some(cmds) = maybe_node {
+            self.gen_commands(cmds)
+        } else {
+            self.print_message(Message::CodeMessage {
+                severity: MessageSeverity::WARNING,
+                message: "empty block",
+                location: *error_loc,
+            });
+            vec![]
+        };
+        cmds
     }
 
     fn gen_while(&mut self, node: Node) -> Command {
         assert_eq!(node.kind(), "command");
         Command::While {
             condition: self.gen_condition(node.child_by_field_name("condition").unwrap()),
-            commands: self.gen_commands(node.child_by_field_name("body").unwrap()),
+            commands: self
+                .gen_commands_or_emppty(node.child_by_field_name("body"), &node.get_location()),
             location: node.get_location(),
         }
     }
@@ -438,7 +466,8 @@ impl Program {
     fn gen_repeat(&mut self, node: Node) -> Command {
         assert_eq!(node.kind(), "command");
         Command::Repeat {
-            commands: self.gen_commands(node.child_by_field_name("body").unwrap()),
+            commands: self
+                .gen_commands_or_emppty(node.child_by_field_name("body"), &node.get_location()),
             condition: self.gen_condition(node.child_by_field_name("condition").unwrap()),
             location: node.get_location(),
         }
@@ -451,7 +480,8 @@ impl Program {
             from: self.gen_value(node.child_by_field_name("start").unwrap()),
             to: self.gen_value(node.child_by_field_name("end").unwrap()),
             direction: ForDirection::Ascending,
-            commands: self.gen_commands(node.child_by_field_name("body").unwrap()),
+            commands: self
+                .gen_commands_or_emppty(node.child_by_field_name("body"), &node.get_location()),
             location: node.get_location(),
         }
     }
@@ -463,7 +493,8 @@ impl Program {
             from: self.gen_value(node.child_by_field_name("start").unwrap()),
             to: self.gen_value(node.child_by_field_name("end").unwrap()),
             direction: ForDirection::Descending,
-            commands: self.gen_commands(node.child_by_field_name("body").unwrap()),
+            commands: self
+                .gen_commands_or_emppty(node.child_by_field_name("body"), &node.get_location()),
             location: node.get_location(),
         }
     }

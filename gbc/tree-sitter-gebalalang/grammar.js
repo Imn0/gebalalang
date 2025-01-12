@@ -12,9 +12,7 @@ module.exports = grammar({
         field("main_program", $.main)
       ),
 
-    procedures: $ => (
-      field("procedure",repeat1($.procedure))
-    ),
+    procedures: ($) => field("procedure", repeat1($.procedure)),
 
     procedure: ($) =>
       seq(
@@ -68,9 +66,9 @@ module.exports = grammar({
                 "IF",
                 field("condition", $.condition),
                 "THEN",
-                field("then_branch", $.commands),
+                optional(field("then_branch", $.commands)),
                 "ELSE",
-                field("else_branch", $.commands),
+                optional(field("else_branch", $.commands)),
                 "ENDIF"
               ),
               "if_else_command"
@@ -87,7 +85,7 @@ module.exports = grammar({
                 "IF",
                 field("condition", $.condition),
                 "THEN",
-                field("then_branch", $.commands),
+                optional(field("then_branch", $.commands)),
                 "ENDIF"
               ),
               "if_command"
@@ -104,7 +102,7 @@ module.exports = grammar({
                 "WHILE",
                 field("condition", $.condition),
                 "DO",
-                field("body", $.commands),
+                optional(field("body", $.commands)),
                 "ENDWHILE"
               ),
               "while_command"
@@ -119,7 +117,7 @@ module.exports = grammar({
             alias(
               seq(
                 "REPEAT",
-                field("body", $.commands),
+                optional(field("body", $.commands)),
                 "UNTIL",
                 field("condition", $.condition),
                 ";"
@@ -142,7 +140,7 @@ module.exports = grammar({
                 "TO",
                 field("end", $.value),
                 "DO",
-                field("body", $.commands),
+                optional(field("body", $.commands)),
                 "ENDFOR"
               ),
               "for_to_command"
@@ -163,7 +161,7 @@ module.exports = grammar({
                 "DOWNTO",
                 field("end", $.value),
                 "DO",
-                field("body", $.commands),
+                optional(field("body", $.commands)),
                 "ENDFOR"
               ),
               "for_downto_command"

@@ -17,7 +17,7 @@ pub struct CliArgs {
     input_file: String,
 
     #[arg(default_value = "a.mr")]
-    output_file: String,
+    output: String,
 
     #[arg(long, action = clap::ArgAction::SetTrue, help="Verbose error logging")]
     verbose: bool,
@@ -60,10 +60,10 @@ impl Program {
         }
 
         self.config.source_path = cli.input_file;
-        self.config.output_path = cli.output_file;
+        self.config.output_path = cli.output;
         self.config.procedure_separate_namespace = cli.variable_separation;
 
-        let out_default = matches.value_source("output_file") == Some(ValueSource::DefaultValue);
+        let out_default = matches.value_source("output") == Some(ValueSource::DefaultValue);
 
         if out_default {
             match cli.target {
@@ -74,7 +74,8 @@ impl Program {
                     self.config.output_path = "a.py".to_owned();
                 }
                 Target::X86_64_LinuxUnknown => {
-                    self.config.output_path = "a.A".to_owned();
+                    self.config.output_path = "a".to_owned();
+                    self.config.set_out_to_exe = true;
                 }
             }
         }

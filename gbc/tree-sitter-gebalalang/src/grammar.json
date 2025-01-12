@@ -246,24 +246,40 @@
                       "value": "THEN"
                     },
                     {
-                      "type": "FIELD",
-                      "name": "then_branch",
-                      "content": {
-                        "type": "SYMBOL",
-                        "name": "commands"
-                      }
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "FIELD",
+                          "name": "then_branch",
+                          "content": {
+                            "type": "SYMBOL",
+                            "name": "commands"
+                          }
+                        },
+                        {
+                          "type": "BLANK"
+                        }
+                      ]
                     },
                     {
                       "type": "STRING",
                       "value": "ELSE"
                     },
                     {
-                      "type": "FIELD",
-                      "name": "else_branch",
-                      "content": {
-                        "type": "SYMBOL",
-                        "name": "commands"
-                      }
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "FIELD",
+                          "name": "else_branch",
+                          "content": {
+                            "type": "SYMBOL",
+                            "name": "commands"
+                          }
+                        },
+                        {
+                          "type": "BLANK"
+                        }
+                      ]
                     },
                     {
                       "type": "STRING",
@@ -305,12 +321,20 @@
                       "value": "THEN"
                     },
                     {
-                      "type": "FIELD",
-                      "name": "then_branch",
-                      "content": {
-                        "type": "SYMBOL",
-                        "name": "commands"
-                      }
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "FIELD",
+                          "name": "then_branch",
+                          "content": {
+                            "type": "SYMBOL",
+                            "name": "commands"
+                          }
+                        },
+                        {
+                          "type": "BLANK"
+                        }
+                      ]
                     },
                     {
                       "type": "STRING",
@@ -352,12 +376,20 @@
                       "value": "DO"
                     },
                     {
-                      "type": "FIELD",
-                      "name": "body",
-                      "content": {
-                        "type": "SYMBOL",
-                        "name": "commands"
-                      }
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "FIELD",
+                          "name": "body",
+                          "content": {
+                            "type": "SYMBOL",
+                            "name": "commands"
+                          }
+                        },
+                        {
+                          "type": "BLANK"
+                        }
+                      ]
                     },
                     {
                       "type": "STRING",
@@ -387,12 +419,20 @@
                       "value": "REPEAT"
                     },
                     {
-                      "type": "FIELD",
-                      "name": "body",
-                      "content": {
-                        "type": "SYMBOL",
-                        "name": "commands"
-                      }
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "FIELD",
+                          "name": "body",
+                          "content": {
+                            "type": "SYMBOL",
+                            "name": "commands"
+                          }
+                        },
+                        {
+                          "type": "BLANK"
+                        }
+                      ]
                     },
                     {
                       "type": "STRING",
@@ -470,12 +510,20 @@
                       "value": "DO"
                     },
                     {
-                      "type": "FIELD",
-                      "name": "body",
-                      "content": {
-                        "type": "SYMBOL",
-                        "name": "commands"
-                      }
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "FIELD",
+                          "name": "body",
+                          "content": {
+                            "type": "SYMBOL",
+                            "name": "commands"
+                          }
+                        },
+                        {
+                          "type": "BLANK"
+                        }
+                      ]
                     },
                     {
                       "type": "STRING",
@@ -541,12 +589,20 @@
                       "value": "DO"
                     },
                     {
-                      "type": "FIELD",
-                      "name": "body",
-                      "content": {
-                        "type": "SYMBOL",
-                        "name": "commands"
-                      }
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "FIELD",
+                          "name": "body",
+                          "content": {
+                            "type": "SYMBOL",
+                            "name": "commands"
+                          }
+                        },
+                        {
+                          "type": "BLANK"
+                        }
+                      ]
                     },
                     {
                       "type": "STRING",

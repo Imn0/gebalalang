@@ -1,16 +1,19 @@
 use assembler::assemble;
 use gvm_ext::compile;
+use gvme_optimizer::optimize;
 
 use super::{Compile, GvmTarget};
 
 mod assembler;
 mod gvm_ext;
+mod gvme_optimizer;
 mod memory;
 
 impl Compile for GvmTarget {
     fn compile(&self, ir_prog: &crate::code_gen::IrProgram) -> Box<[u8]> {
         let gvme = compile(ir_prog);
-        let assembled = assemble(&gvme.code, &gvme.proc_info);
+        let optimized = optimize(gvme);
+        let assembled = assemble(&optimized.code, &optimized.proc_info);
 
         let mut out = String::new();
 
