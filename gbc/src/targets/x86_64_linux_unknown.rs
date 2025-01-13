@@ -142,11 +142,18 @@ impl CodeBlock {
                 let dest = self.get_ir_operand_loc(dest);
                 self.asm += &format!("mov {}, rax\n", dest);
             }
+            IR::Mov { dest, src } => {
+                let src = self.get_ir_operand_loc(src);
+                let dest = self.get_ir_operand_loc(dest);
+                self.asm += &format!("mov {}, {}\n", dest, src);
+            }
             IR::Div { dest, left, right } => {
+                self.asm += &format!("xor rdx, rdx\n");
                 let left = self.get_ir_operand_loc(left);
                 self.asm += &format!("mov rax, {}\n", left);
                 let right = self.get_ir_operand_loc(right);
-                self.asm += &format!("idiv rax, {}\n", right);
+                self.asm += &format!("mov rbx, {}\n", right);
+                self.asm += &format!("idiv rbx\n");
 
                 let dest = self.get_ir_operand_loc(dest);
                 self.asm += &format!("mov {}, rax\n", dest);
@@ -155,19 +162,79 @@ impl CodeBlock {
                 let left = self.get_ir_operand_loc(left);
                 self.asm += &format!("mov rax, {}\n", left);
                 let right = self.get_ir_operand_loc(right);
-                self.asm += &format!("idiv rax, {}\n", right);
+
+                self.asm += &format!("mov rbx, {}\n", right);
+                self.asm += &format!("idiv rbx\n");
 
                 let dest = self.get_ir_operand_loc(dest);
                 self.asm += &format!("mov {}, rdx\n", dest);
             }
-            _ => {}
+            IR::Comment(_) => {}
+            IR::Label(name) => {
+                self.asm += &format!("{}:\n", name);
+            }
+            IR::Jump(name) => {
+                self.asm += &format!("jmp {}\n", name);
+            }
+            IR::JNegativeOrZero { left, right, label } => {
+                let left = self.get_ir_operand_loc(left);
+                self.asm += &format!("mov rax, {}\n", left);
+                let right = self.get_ir_operand_loc(right);
+                self.asm += &format!("cmp rax, {}\n", right);
+                self.asm += &format!("jle {}\n", label);
+            }
+            IR::JZero { left, right, label } => {
+                let left = self.get_ir_operand_loc(left);
+                self.asm += &format!("mov rax, {}\n", left);
+                let right = self.get_ir_operand_loc(right);
+                self.asm += &format!("cmp rax, {}\n", right);
+                self.asm += &format!("je {}\n", label);
+            }
+            IR::JNotZero { left, right, label } => {
+                let left = self.get_ir_operand_loc(left);
+                self.asm += &format!("mov rax, {}\n", left);
+                let right = self.get_ir_operand_loc(right);
+                self.asm += &format!("cmp rax, {}\n", right);
+                self.asm += &format!("jne {}\n", label);
+            }
+            IR::JPositive { left, right, label } => {
+                let left = self.get_ir_operand_loc(left);
+                self.asm += &format!("mov rax, {}\n", left);
+                let right = self.get_ir_operand_loc(right);
+                self.asm += &format!("cmp rax, {}\n", right);
+                self.asm += &format!("jle {}\n", label);
+            }
+            IR::JNegative { left, right, label } => {
+                let left = self.get_ir_operand_loc(left);
+                self.asm += &format!("mov rax, {}\n", left);
+                let right = self.get_ir_operand_loc(right);
+                self.asm += &format!("cmp rax, {}\n", right);
+                self.asm += &format!("jns {}\n", label);
+            }
+            IR::JPositiveOrZero { left, right, label } => {
+                let left = self.get_ir_operand_loc(left);
+                self.asm += &format!("mov rax, {}\n", left);
+                let right = self.get_ir_operand_loc(right);
+                self.asm += &format!("cmp rax, {}\n", right);
+                self.asm += &format!("js {}\n", label);
+            }
+            IR::Call {
+                procedure,
+                arguments,
+            } => todo!(),
+            IR::Return => todo!(),
+            IR::Drop { name } => {}
+            IR::HasEffect(ir_operand) => {}
+            // _ => {
+            //     todo!("{:?}", op)
+            // }
         }
     }
 
     fn get_ir_operand_loc(&mut self, oper: &IrOperand) -> String {
         match oper {
             IrOperand::Variable(name) => {
-                let offset = self.vars.get(name).unwrap();
+                let offset = self.vars.get(&get_base_name(name)).unwrap();
 
                 return format!("qword [rbp-{}]", offset);
             }
@@ -181,6 +248,11 @@ impl CodeBlock {
             } => todo!(),
         }
     }
+}
+
+fn get_base_name(name: &str) -> String {
+    let parts: Vec<&str> = name.split("_:").collect();
+    parts[0].to_owned()
 }
 
 fn compile_header() -> String {

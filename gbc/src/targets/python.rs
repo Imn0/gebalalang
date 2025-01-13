@@ -239,12 +239,13 @@ fn compile_op(ir_op: &IR) -> String {
             format!("")
         }
         IR::Comment(_) => format!(""),
+        IR::HasEffect(ir_operand) => format!(""),
     }
 }
 
 fn get_ir_operand(operand: &IrOperand) -> String {
     match operand {
-        IrOperand::Variable(name) => return name.clone(),
+        IrOperand::Variable(name) => return get_base_name(name),
         IrOperand::Constant(num) => format!("{}", num),
         IrOperand::ArrayConstAccess { base_name, idx } => {
             format!("{}[{}]", base_name, idx)
@@ -253,7 +254,12 @@ fn get_ir_operand(operand: &IrOperand) -> String {
             base_name,
             idx_name,
         } => {
-            format!("{}[{}]", base_name, idx_name)
+            format!("{}[{}]", base_name, get_base_name(idx_name))
         }
     }
+}
+
+fn get_base_name(name: &str) -> String {
+    let parts: Vec<&str> = name.split("_:").collect();
+    parts[0].to_owned()
 }

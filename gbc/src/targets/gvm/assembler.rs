@@ -184,8 +184,8 @@ pub fn assemble(gvme: &Vec<GVMe>, procs: &HashMap<String, GVMeProc>) -> Vec<GVM>
     let mut asm_code: Vec<GVM> = vec![];
 
     // exapnd procedure calls
-    for (i, ir) in gvme.iter().enumerate() {
-        match ir {
+    for (i, gvme_op) in gvme.iter().enumerate() {
+        match gvme_op {
             GVMe::call { name } => {
                 let proc_info = procs.get(name).unwrap().to_owned();
 
@@ -249,7 +249,7 @@ pub fn assemble(gvme: &Vec<GVMe>, procs: &HashMap<String, GVMeProc>) -> Vec<GVM>
             }
 
             _ => {
-                asm_code.push(GVM::from(ir.clone()));
+                asm_code.push(GVM::from(gvme_op.clone()));
             }
         }
     }

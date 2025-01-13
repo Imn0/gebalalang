@@ -18,8 +18,8 @@ pub enum IR {
     },
     Add {
         dest: IrOperand,
-        left: IrOperand,
         right: IrOperand,
+        left: IrOperand,
     },
     Sub {
         dest: IrOperand,
@@ -80,6 +80,7 @@ pub enum IR {
     Return,
     Read(IrOperand),
     Write(IrOperand),
+    HasEffect(IrOperand),
     Comment(String),
 }
 
@@ -157,6 +158,9 @@ impl fmt::Display for IR {
                         write!(f, "")
                     }
                     IR::Drop { name } => write!(f, "drop {}", name),
+                    IR::HasEffect(ir_operand) => {
+                        write!(f, "effc {}", ir_operand)
+                    }
                 }
             }
         }

@@ -5,12 +5,15 @@ use crate::program::Program;
 pub mod ir;
 use ir::IR;
 mod ir_generator;
+mod ir_tac_ify;
 
+#[derive(Debug)]
 pub struct ArgInfo {
     pub name: String,
     pub is_array: bool,
 }
 
+#[derive(Debug)]
 pub struct ProcedureInfo {
     pub name: String,
     pub lbl: String,
@@ -28,7 +31,10 @@ pub struct IrProgram {
 
 impl Program {
     pub fn ir_gen(&mut self) -> Result<(), ()> {
-        self.ir_program.generate_program(&self.ast);
+        let mut a = IrProgram::default();
+        a.generate_program(&self.ast);
+        self.ir_program = a.tac_ify();
+
         Ok(())
     }
 }

@@ -627,6 +627,7 @@ impl<'a> GVMeGnerator<'a> {
                 self.code.push(GVMe::comment { cm: cm.to_string() });
                 Some(())
             }
+            IR::HasEffect(_) => Some(()),
         }
     }
 

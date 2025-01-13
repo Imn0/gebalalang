@@ -75,9 +75,11 @@ impl Program {
                 }
                 Target::X86_64_LinuxUnknown => {
                     self.config.output_path = "a".to_owned();
-                    self.config.set_out_to_exe = true;
                 }
             }
+        }
+        if cli.target == Target::X86_64_LinuxUnknown {
+            self.config.set_out_to_exe = true;
         }
         self.config.target = cli.target;
 

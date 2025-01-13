@@ -211,6 +211,7 @@ impl IrProgram {
                         });
                     }
                 };
+                v.push(IR::HasEffect(for_iter.clone()));
 
                 v.push(IR::Jump(loop_start));
                 v.push(IR::Label(loop_exit));

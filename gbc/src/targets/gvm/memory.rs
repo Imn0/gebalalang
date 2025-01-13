@@ -161,7 +161,9 @@ impl Memory {
 }
 
 fn scoped_name(name: &str, scope: &str) -> String {
-    return format!("{}::{}", scope, name);
+    let parts: Vec<&str> = name.split("_:").collect();
+    let recovered_name = parts[0];
+    return format!("{}::{}", scope, recovered_name);
 }
 
 fn constant_name(constant: &i64) -> String {
