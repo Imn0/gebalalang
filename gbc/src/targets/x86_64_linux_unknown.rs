@@ -224,7 +224,6 @@ impl CodeBlock {
             } => todo!(),
             IR::Return => todo!(),
             IR::Drop { name } => {}
-            IR::HasEffect(ir_operand) => {}
             // _ => {
             //     todo!("{:?}", op)
             // }
@@ -251,8 +250,9 @@ impl CodeBlock {
 }
 
 fn get_base_name(name: &str) -> String {
-    let parts: Vec<&str> = name.split("_:").collect();
-    parts[0].to_owned()
+    // let parts: Vec<&str> = name.split("_:").collect();
+    // parts[0].to_owned()
+    name.to_owned()
 }
 
 fn compile_header() -> String {

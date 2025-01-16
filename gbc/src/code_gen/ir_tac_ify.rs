@@ -170,17 +170,12 @@ impl CodeBlock {
                     let oper = self.get_current_var(ir_operand);
                     IR::Write(oper)
                 }
-                IR::HasEffect(ir_operand) => {
-                    let op = self.get_current_var(ir_operand);
-                    IR::HasEffect(op)
-                }
             };
             self.code.push(app);
         }
 
         for arg in args {
             let op = self.get_current_var(&IrOperand::Variable(arg.name.clone()));
-            self.code.push(IR::HasEffect(op));
         }
     }
 
@@ -216,8 +211,6 @@ impl CodeBlock {
                 let cnt = self.vars.get_mut(idx_name).unwrap();
                 let new_idx_name = format!("{}_:{}", idx_name, cnt);
 
-                self.code
-                    .push(IR::HasEffect(IrOperand::Variable(new_idx_name.clone())));
                 return IrOperand::ArrayDynamicAccess {
                     base_name: base_name.to_string(),
                     idx_name: new_idx_name,

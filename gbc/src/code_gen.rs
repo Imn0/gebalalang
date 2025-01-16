@@ -33,7 +33,8 @@ impl Program {
     pub fn ir_gen(&mut self) -> Result<(), ()> {
         let mut a = IrProgram::default();
         a.generate_program(&self.ast);
-        self.ir_program = a.tac_ify();
+        self.ir_program = a;
+        // self.ir_program = a.tac_ify();
 
         Ok(())
     }

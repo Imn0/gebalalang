@@ -4,7 +4,7 @@ use crate::program::Program;
 use crate::program::Target;
 use clap::parser::ValueSource;
 use clap::CommandFactory;
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[command(

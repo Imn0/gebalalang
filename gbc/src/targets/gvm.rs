@@ -2,8 +2,7 @@ use assembler::assemble;
 use gvm_ext::compile;
 use gvme_optimizer::optimize;
 
-use super::{Compile, GvmTarget};
-
+use super::{Compile, GvmTarget, IR};
 mod assembler;
 mod gvm_ext;
 mod gvme_optimizer;

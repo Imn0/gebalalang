@@ -1,29 +1,17 @@
 use crate::{code_gen::IrProgram, program::Program, try_or_err};
 
-mod common_subexpression;
-mod constant_folding;
-mod copy_propagation;
-mod dead_code_elemination;
-mod strength_reduction;
-
 trait Optimizer {
     fn optimize(&self, prog: &mut IrProgram) -> Result<(), ()>;
 }
 
-struct ConstatFolding;
-struct DeadCodeElimination;
-struct StrengthReduction;
-struct CopyPropagation;
-struct CommonSubexpressionElimination;
+struct RemoveTailingOperations;
+struct RemoveUnusedProcedures;
 
 impl Program {
     pub fn ir_optimize(&mut self) -> Result<(), ()> {
         let optimization_passes: Vec<Box<dyn Optimizer>> = vec![
-            Box::new(ConstatFolding),
-            Box::new(DeadCodeElimination),
-            Box::new(StrengthReduction),
-            Box::new(CopyPropagation),
-            Box::new(CommonSubexpressionElimination),
+            Box::new(RemoveTailingOperations),
+            Box::new(RemoveUnusedProcedures),
         ];
 
         for optimization_pass in optimization_passes {
@@ -31,5 +19,37 @@ impl Program {
         }
 
         return Ok(());
+    }
+}
+
+impl Optimizer for RemoveUnusedProcedures {
+    fn optimize(&self, prog: &mut IrProgram) -> Result<(), ()> {
+        Ok(())
+    }
+}
+
+impl Optimizer for RemoveTailingOperations {
+    fn optimize(&self, prog: &mut IrProgram) -> Result<(), ()> {
+        let p = &mut prog.main;
+        while let Some(last) = p.last() {
+            match last {
+                crate::code_gen::ir::IR::Label(_)
+                | crate::code_gen::ir::IR::Jump(_)
+                | crate::code_gen::ir::IR::JZero { .. }
+                | crate::code_gen::ir::IR::JNotZero { .. }
+                | crate::code_gen::ir::IR::JPositive { .. }
+                | crate::code_gen::ir::IR::JNegative { .. }
+                | crate::code_gen::ir::IR::JPositiveOrZero { .. }
+                | crate::code_gen::ir::IR::JNegativeOrZero { .. }
+                | crate::code_gen::ir::IR::Call { .. }
+                | crate::code_gen::ir::IR::Read(_)
+                | crate::code_gen::ir::IR::Write(_) => {
+                    break;
+                }
+                _ => {}
+            }
+            p.pop();
+        }
+        Ok(())
     }
 }

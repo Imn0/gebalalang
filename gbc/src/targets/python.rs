@@ -239,7 +239,6 @@ fn compile_op(ir_op: &IR) -> String {
             format!("")
         }
         IR::Comment(_) => format!(""),
-        IR::HasEffect(ir_operand) => format!(""),
     }
 }
 
@@ -260,6 +259,7 @@ fn get_ir_operand(operand: &IrOperand) -> String {
 }
 
 fn get_base_name(name: &str) -> String {
-    let parts: Vec<&str> = name.split("_:").collect();
-    parts[0].to_owned()
+    // let parts: Vec<&str> = name.split("_:").collect();
+    // parts[0].to_owned()
+    name.to_owned()
 }

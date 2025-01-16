@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 use super::{IrProgram, ProcedureInfo};
 
@@ -18,8 +18,8 @@ pub enum IR {
     },
     Add {
         dest: IrOperand,
-        right: IrOperand,
         left: IrOperand,
+        right: IrOperand,
     },
     Sub {
         dest: IrOperand,
@@ -80,7 +80,6 @@ pub enum IR {
     Return,
     Read(IrOperand),
     Write(IrOperand),
-    HasEffect(IrOperand),
     Comment(String),
 }
 
@@ -158,9 +157,6 @@ impl fmt::Display for IR {
                         write!(f, "")
                     }
                     IR::Drop { name } => write!(f, "drop {}", name),
-                    IR::HasEffect(ir_operand) => {
-                        write!(f, "effc {}", ir_operand)
-                    }
                 }
             }
         }
@@ -218,5 +214,133 @@ impl fmt::Display for IrProgram {
         }
 
         write!(f, "")
+    }
+}
+
+pub struct IRNameTransformer<'a> {
+    pub translate_map: HashMap<String, String>,
+    pub default_prefix: &'a str,
+}
+
+impl<'a> IRNameTransformer<'a> {
+    pub fn ir_transform(&self, original: &Vec<IR>) -> Vec<IR> {
+        let mut v = vec![];
+        for op in original.iter() {
+            v.push(match op {
+                IR::Aloc {
+                    name,
+                    is_array,
+
+                    array_bounds,
+                } => IR::Aloc {
+                    name: self.name_transform(name),
+                    is_array: *is_array,
+                    array_bounds: *array_bounds,
+                },
+                IR::Drop { name } => IR::Drop {
+                    name: self.name_transform(name),
+                },
+                IR::Mov { dest, src } => IR::Mov {
+                    dest: self.ir_oper_transform(dest),
+                    src: self.ir_oper_transform(src),
+                },
+                IR::Add { dest, right, left } => IR::Add {
+                    dest: self.ir_oper_transform(dest),
+                    right: self.ir_oper_transform(right),
+                    left: self.ir_oper_transform(left),
+                },
+                IR::Sub { dest, left, right } => IR::Sub {
+                    dest: self.ir_oper_transform(dest),
+                    right: self.ir_oper_transform(right),
+                    left: self.ir_oper_transform(left),
+                },
+                IR::Mul { dest, left, right } => IR::Mul {
+                    dest: self.ir_oper_transform(dest),
+                    right: self.ir_oper_transform(right),
+                    left: self.ir_oper_transform(left),
+                },
+                IR::Div { dest, left, right } => IR::Div {
+                    dest: self.ir_oper_transform(dest),
+                    right: self.ir_oper_transform(right),
+                    left: self.ir_oper_transform(left),
+                },
+                IR::Mod { dest, left, right } => IR::Mod {
+                    dest: self.ir_oper_transform(dest),
+                    right: self.ir_oper_transform(right),
+                    left: self.ir_oper_transform(left),
+                },
+                IR::Label(_) => op.clone(),
+                IR::Jump(_) => op.clone(),
+                IR::JZero { left, right, label } => IR::JZero {
+                    left: self.ir_oper_transform(left),
+                    right: self.ir_oper_transform(right),
+                    label: label.to_string(),
+                },
+                IR::JNotZero { left, right, label } => IR::JNotZero {
+                    left: self.ir_oper_transform(left),
+                    right: self.ir_oper_transform(right),
+                    label: label.to_string(),
+                },
+                IR::JPositive { left, right, label } => IR::JPositive {
+                    left: self.ir_oper_transform(left),
+                    right: self.ir_oper_transform(right),
+                    label: label.to_string(),
+                },
+                IR::JNegative { left, right, label } => IR::JNegative {
+                    left: self.ir_oper_transform(left),
+                    right: self.ir_oper_transform(right),
+                    label: label.to_string(),
+                },
+                IR::JPositiveOrZero { left, right, label } => IR::JPositiveOrZero {
+                    left: self.ir_oper_transform(left),
+                    right: self.ir_oper_transform(right),
+                    label: label.to_string(),
+                },
+                IR::JNegativeOrZero { left, right, label } => IR::JNegativeOrZero {
+                    left: self.ir_oper_transform(left),
+                    right: self.ir_oper_transform(right),
+                    label: label.to_string(),
+                },
+                IR::Call {
+                    procedure,
+                    arguments,
+                } => IR::Call {
+                    procedure: procedure.to_string(),
+                    arguments: arguments
+                        .iter()
+                        .map(|arg| self.ir_oper_transform(arg))
+                        .collect(),
+                },
+                IR::Return => IR::Return,
+                IR::Read(ir_operand) => IR::Read(self.ir_oper_transform(ir_operand)),
+                IR::Write(ir_operand) => IR::Write(self.ir_oper_transform(ir_operand)),
+                IR::Comment(_) => todo!(),
+            })
+        }
+        v
+    }
+
+    fn ir_oper_transform(&self, var: &IrOperand) -> IrOperand {
+        match &var {
+            IrOperand::Variable(name) => IrOperand::Variable(self.name_transform(name)),
+            IrOperand::Constant(_) => var.clone(),
+            IrOperand::ArrayConstAccess { base_name, idx } => IrOperand::ArrayConstAccess {
+                base_name: self.name_transform(base_name),
+                idx: *idx,
+            },
+            IrOperand::ArrayDynamicAccess {
+                base_name,
+                idx_name,
+            } => IrOperand::ArrayDynamicAccess {
+                base_name: self.name_transform(&base_name),
+                idx_name: self.name_transform(&idx_name),
+            },
+        }
+    }
+
+    fn name_transform(&self, name: &str) -> String {
+        self.translate_map
+            .get(name)
+            .map_or(format!("{}{}", self.default_prefix, name), |s| s.clone())
     }
 }

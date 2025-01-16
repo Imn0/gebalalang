@@ -3,7 +3,7 @@
 
 module.exports = grammar({
   name: "gbl",
-  word: ($) => $.word_token,
+  // word: ($) => $.word_token,
   extras: ($) => [$._comment, /[\s\t\n]+/],
   rules: {
     program_all: ($) =>

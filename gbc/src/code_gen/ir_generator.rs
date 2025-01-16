@@ -161,6 +161,7 @@ impl IrProgram {
                 let for_iter = IrOperand::Variable(variable.to_string());
                 let for_cnt = IrOperand::Variable(format!("{}CNT", variable));
                 let one = IrOperand::Constant(1);
+                let zero = IrOperand::Constant(0);
                 let from = self.generate_value(from);
                 let to = self.generate_value(to);
 
@@ -169,32 +170,39 @@ impl IrProgram {
 
                 v.push(IR::Mov {
                     dest: for_iter.clone(),
-                    src: from,
-                });
-                v.push(IR::Mov {
-                    dest: for_cnt.clone(),
-                    src: to,
+                    src: from.clone(),
                 });
 
-                v.push(IR::Label(loop_start.clone()));
                 match direction {
                     crate::ast::ForDirection::Ascending => {
-                        v.push(IR::JPositive {
-                            left: for_iter.clone(),
-                            right: for_cnt.clone(),
-                            label: loop_exit.clone(),
+                        v.push(IR::Sub {
+                            dest: for_cnt.clone(),
+                            left: to,
+                            right: from,
                         });
                     }
                     crate::ast::ForDirection::Descending => {
-                        v.push(IR::JNegative {
-                            left: for_iter.clone(),
-                            right: for_cnt.clone(),
-                            label: loop_exit.clone(),
+                        v.push(IR::Sub {
+                            dest: for_cnt.clone(),
+                            left: from,
+                            right: to,
                         });
                     }
-                };
+                }
+                
+                v.push(IR::Label(loop_start.clone()));
+                v.push(IR::JNegative {
+                    left: for_cnt.clone(),
+                    right: zero.clone(),
+                    label: loop_exit.clone(),
+                });
 
                 v.append(&mut self.compile_commands(commands));
+                v.push(IR::Sub {
+                    dest: for_cnt.clone(),
+                    left: for_cnt.clone(),
+                    right: one.clone(),
+                });
                 match direction {
                     crate::ast::ForDirection::Ascending => {
                         v.push(IR::Add {
@@ -211,7 +219,7 @@ impl IrProgram {
                         });
                     }
                 };
-                v.push(IR::HasEffect(for_iter.clone()));
+                
 
                 v.push(IR::Jump(loop_start));
                 v.push(IR::Label(loop_exit));
