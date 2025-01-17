@@ -331,13 +331,13 @@ impl Program {
     }
 
     fn gen_commands(&mut self, node: Node) -> Vec<Command> {
-        // assert_eq!(node.kind(), "commands");
         node.named_children(&mut node.walk())
             .map(|child| self.gen_command(child))
+            .flatten()
             .collect()
     }
 
-    fn gen_command(&mut self, node: Node) -> Command {
+    fn gen_command(&mut self, node: Node) -> Vec<Command> {
         assert_eq!(node.kind(), "command");
 
         let actual_command = node.child(0).unwrap();
@@ -397,41 +397,67 @@ impl Program {
         }
     }
 
-    fn gen_assignment(&self, node: Node) -> Command {
+    fn gen_assignment(&self, node: Node) -> Vec<Command> {
         assert_eq!(node.kind(), "command");
 
-        Command::Assignment {
+        vec![Command::Assignment {
             identifier: self.gen_identifier(node.child_by_field_name("target").unwrap()),
             expression: self.gen_expression(node.child_by_field_name("expression").unwrap()),
             location: node.get_location(),
-        }
+        }]
     }
 
-    fn gen_if_else(&mut self, node: Node) -> Command {
+    fn gen_if_else(&mut self, node: Node) -> Vec<Command> {
         assert_eq!(node.kind(), "command");
-        Command::IfElse {
-            condition: self.gen_condition(node.child_by_field_name("condition").unwrap()),
-            then_commands: self.gen_commands_or_emppty(
+
+        let condition = self.gen_condition(node.child_by_field_name("condition").unwrap());
+
+        if condition.is_always_true() {
+            self.gen_commands_or_emppty(
                 node.child_by_field_name("then_branch"),
                 &node.get_location(),
-            ),
-            else_commands: self.gen_commands_or_emppty(
+            )
+        } else if condition.is_always_false() {
+            self.gen_commands_or_emppty(
                 node.child_by_field_name("else_branch"),
                 &node.get_location(),
-            ),
-            location: node.get_location(),
+            )
+        } else {
+            vec![Command::IfElse {
+                condition,
+                then_commands: self.gen_commands_or_emppty(
+                    node.child_by_field_name("then_branch"),
+                    &node.get_location(),
+                ),
+                else_commands: self.gen_commands_or_emppty(
+                    node.child_by_field_name("else_branch"),
+                    &node.get_location(),
+                ),
+                location: node.get_location(),
+            }]
         }
     }
 
-    fn gen_if(&mut self, node: Node) -> Command {
+    fn gen_if(&mut self, node: Node) -> Vec<Command> {
         assert_eq!(node.kind(), "command");
-        Command::If {
-            condition: self.gen_condition(node.child_by_field_name("condition").unwrap()),
-            then_commands: self.gen_commands_or_emppty(
+
+        let condition = self.gen_condition(node.child_by_field_name("condition").unwrap());
+        if condition.is_always_true() {
+            self.gen_commands_or_emppty(
                 node.child_by_field_name("then_branch"),
                 &node.get_location(),
-            ),
-            location: node.get_location(),
+            )
+        } else if condition.is_always_false() {
+            vec![]
+        } else {
+            vec![Command::If {
+                condition,
+                then_commands: self.gen_commands_or_emppty(
+                    node.child_by_field_name("then_branch"),
+                    &node.get_location(),
+                ),
+                location: node.get_location(),
+            }]
         }
     }
 
@@ -443,8 +469,14 @@ impl Program {
         let cmds = if let Some(cmds) = maybe_node {
             self.gen_commands(cmds)
         } else {
+            let severity = if self.config.werror {
+                self.ast.is_valid = false;
+                MessageSeverity::ERROR
+            } else {
+                MessageSeverity::WARNING
+            };
             self.print_message(Message::CodeMessage {
-                severity: MessageSeverity::WARNING,
+                severity,
                 message: "empty block",
                 location: *error_loc,
             });
@@ -453,29 +485,43 @@ impl Program {
         cmds
     }
 
-    fn gen_while(&mut self, node: Node) -> Command {
+    fn gen_while(&mut self, node: Node) -> Vec<Command> {
         assert_eq!(node.kind(), "command");
-        Command::While {
-            condition: self.gen_condition(node.child_by_field_name("condition").unwrap()),
-            commands: self
-                .gen_commands_or_emppty(node.child_by_field_name("body"), &node.get_location()),
-            location: node.get_location(),
+
+        let condition = self.gen_condition(node.child_by_field_name("condition").unwrap());
+        if condition.is_always_true() {
+            self.print_message(Message::CodeMessage {
+                severity: MessageSeverity::INFO,
+                message: "infinite loop",
+                location: node.get_location(),
+            });
+        }
+
+        if condition.is_always_false() {
+            vec![]
+        } else {
+            vec![Command::While {
+                condition,
+                commands: self
+                    .gen_commands_or_emppty(node.child_by_field_name("body"), &node.get_location()),
+                location: node.get_location(),
+            }]
         }
     }
 
-    fn gen_repeat(&mut self, node: Node) -> Command {
+    fn gen_repeat(&mut self, node: Node) -> Vec<Command> {
         assert_eq!(node.kind(), "command");
-        Command::Repeat {
+        vec![Command::Repeat {
             commands: self
                 .gen_commands_or_emppty(node.child_by_field_name("body"), &node.get_location()),
             condition: self.gen_condition(node.child_by_field_name("condition").unwrap()),
             location: node.get_location(),
-        }
+        }]
     }
 
-    fn gen_for_to(&mut self, node: Node) -> Command {
+    fn gen_for_to(&mut self, node: Node) -> Vec<Command> {
         assert_eq!(node.kind(), "command");
-        Command::For {
+        vec![Command::For {
             variable: self.get_text(node.child_by_field_name("variable").unwrap()),
             from: self.gen_value(node.child_by_field_name("start").unwrap()),
             to: self.gen_value(node.child_by_field_name("end").unwrap()),
@@ -483,12 +529,12 @@ impl Program {
             commands: self
                 .gen_commands_or_emppty(node.child_by_field_name("body"), &node.get_location()),
             location: node.get_location(),
-        }
+        }]
     }
 
-    fn gen_for_downto(&mut self, node: Node) -> Command {
+    fn gen_for_downto(&mut self, node: Node) -> Vec<Command> {
         assert_eq!(node.kind(), "command");
-        Command::For {
+        vec![Command::For {
             variable: self.get_text(node.child_by_field_name("variable").unwrap()),
             from: self.gen_value(node.child_by_field_name("start").unwrap()),
             to: self.gen_value(node.child_by_field_name("end").unwrap()),
@@ -496,10 +542,10 @@ impl Program {
             commands: self
                 .gen_commands_or_emppty(node.child_by_field_name("body"), &node.get_location()),
             location: node.get_location(),
-        }
+        }]
     }
 
-    fn gen_proc_call(&mut self, node: Node) -> Command {
+    fn gen_proc_call(&mut self, node: Node) -> Vec<Command> {
         assert_eq!(node.kind(), "command");
 
         let proc_call_node = node.child_by_field_name("procedure_call").unwrap();
@@ -520,21 +566,25 @@ impl Program {
             self.ast.is_valid = false;
         }
 
-        Command::ProcedureCall {
+        vec![Command::ProcedureCall {
             proc_name: proc_name,
             arguments: args,
             location: node.get_location(),
-        }
+        }]
     }
 
-    fn gen_read(&self, node: Node) -> Command {
+    fn gen_read(&self, node: Node) -> Vec<Command> {
         assert_eq!(node.kind(), "command");
-        Command::Read(self.gen_identifier(node.child_by_field_name("target").unwrap()))
+        vec![Command::Read(
+            self.gen_identifier(node.child_by_field_name("target").unwrap()),
+        )]
     }
 
-    fn gen_write(&self, node: Node) -> Command {
+    fn gen_write(&self, node: Node) -> Vec<Command> {
         assert_eq!(node.kind(), "command");
-        Command::Write(self.gen_value(node.child_by_field_name("value").unwrap()))
+        vec![Command::Write(
+            self.gen_value(node.child_by_field_name("value").unwrap()),
+        )]
     }
 
     fn gen_args(&self, node: Node) -> Vec<Identifier> {
@@ -632,5 +682,84 @@ impl Program {
         node.utf8_text(&self.source_code.as_bytes())
             .unwrap()
             .to_string()
+    }
+}
+
+impl Condition {
+    fn is_always_true(&self) -> bool {
+        if self._condition_result() == 1 {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    fn is_always_false(&self) -> bool {
+        if self._condition_result() == -1 {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    fn _condition_result(&self) -> i64 {
+        let (num1, num2) = match self {
+            Condition::Equal(value, value1)
+            | Condition::NotEqual(value, value1)
+            | Condition::GreaterThan(value, value1)
+            | Condition::LessThan(value, value1)
+            | Condition::GreaterOrEqual(value, value1)
+            | Condition::LessOrEqual(value, value1) => match (value, value1) {
+                (Value::Number(num1), Value::Number(num2)) => (num1, num2),
+                _ => {
+                    return 0;
+                }
+            },
+        };
+
+        match self {
+            Condition::Equal(_, _) => {
+                if num1 == num2 {
+                    return 1;
+                } else {
+                    return -1;
+                }
+            }
+            Condition::NotEqual(_, _) => {
+                if num1 != num2 {
+                    return 1;
+                } else {
+                    return -1;
+                }
+            }
+            Condition::GreaterThan(_, _) => {
+                if num1 > num2 {
+                    return 1;
+                } else {
+                    return -1;
+                }
+            }
+            Condition::LessThan(_, _) => {
+                if num1 < num2 {
+                    return 1;
+                } else {
+                    return -1;
+                }
+            }
+            Condition::GreaterOrEqual(_, _) => {
+                if num1 >= num2 {
+                    return 1;
+                } else {
+                    return -1;
+                }
+            }
+            Condition::LessOrEqual(_, _) => {
+                if num1 <= num2 {
+                    return 1;
+                } else {
+                    return -1;
+                }
+            }
+        }
     }
 }

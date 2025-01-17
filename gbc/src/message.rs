@@ -80,7 +80,7 @@ impl DisplayMessage<'_> for Program {
                 let mut lines: Vec<&str> = self.source_code.lines().collect();
                 lines.push(" ");
 
-                let header_spaces_num = (lines.len() as f32).log10() as usize + 2;
+                let header_spaces_num = (lines.len() as f32).log10() as usize + 3;
                 let header_spaces = " ".repeat(header_spaces_num);
 
                 let start_row = location.0.row;
@@ -149,15 +149,48 @@ impl DisplayMessage<'_> for Program {
                     eprintln!();
                 }
 
-                for row in start_row + 1..end_row {
+                if end_row - start_row > 7 {
+                    for row in start_row + 1..start_row + 3 {
+                        eprint!(
+                            "\x1b[1;34m{:>width$} \x1b[0m{}>\x1b[0m ",
+                            row + 1,
+                            severity.color_code(),
+                            width = header_spaces_num - 1,
+                        );
+                        eprint!("{}", lines[row]);
+                        eprintln!("\x1b[0m");
+                    }
+
                     eprint!(
                         "\x1b[1;34m{:>width$} \x1b[0m{}>\x1b[0m ",
-                        row + 1,
+                        "...",
                         severity.color_code(),
                         width = header_spaces_num - 1,
                     );
-                    eprint!("{}", lines[row]);
+                    eprint!("...");
                     eprintln!("\x1b[0m");
+
+                    for row in end_row - 2..end_row {
+                        eprint!(
+                            "\x1b[1;34m{:>width$} \x1b[0m{}>\x1b[0m ",
+                            row + 1,
+                            severity.color_code(),
+                            width = header_spaces_num - 1,
+                        );
+                        eprint!("{}", lines[row]);
+                        eprintln!("\x1b[0m");
+                    }
+                } else {
+                    for row in start_row + 1..end_row {
+                        eprint!(
+                            "\x1b[1;34m{:>width$} \x1b[0m{}>\x1b[0m ",
+                            row + 1,
+                            severity.color_code(),
+                            width = header_spaces_num - 1,
+                        );
+                        eprint!("{}", lines[row]);
+                        eprintln!("\x1b[0m");
+                    }
                 }
 
                 eprint!(
