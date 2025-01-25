@@ -11,6 +11,7 @@ mod memory;
 impl Compile for GvmTarget {
     fn compile(&self, ir_prog: &crate::code_gen::IrProgram) -> Box<[u8]> {
         let gvme = compile(ir_prog);
+        // let optimized = gvme;
         let optimized = optimize(gvme);
         let assembled = assemble(&optimized.code, &optimized.proc_info);
 

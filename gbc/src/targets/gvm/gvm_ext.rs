@@ -165,6 +165,8 @@ impl<'a> GVMeGnerator<'a> {
             self.ir_proc_info.insert(name.clone(), proc);
         }
 
+        self.figure_out_which_procs_to_inline(&ir_program);
+
         // buitin procedures, not yet compiled only stubs
         let builtin_mul = self.generate_mul_procedure_stub();
         let builtin_mod_div = self.generate_div_mod_procedure_stub();
@@ -182,7 +184,8 @@ impl<'a> GVMeGnerator<'a> {
 
         let mut compiled_procs: HashSet<String> = HashSet::new();
 
-        for _ in 0..=ir_program.procedures.len() { // hard limit for iterations
+        for _ in 0..=ir_program.procedures.len() {
+            // hard limit for iterations
             let left_to_compile: Vec<String> = self
                 .proc_to_compile
                 .difference(&compiled_procs)
@@ -1401,4 +1404,63 @@ impl<'a> GVMeGnerator<'a> {
         self.next_available_label += 1;
         return lbl;
     }
+
+    fn figure_out_which_procs_to_inline(&mut self, ir_program: &'a IrProgram) {
+        let mut call_counts: HashMap<String, i64> = HashMap::new();
+        let mut calls_to_process: HashSet<String> = HashSet::new();
+        let mut calls_processed: HashSet<String> = HashSet::new();
+
+        for proc in &ir_program.procedures {
+            call_counts.insert(proc.0.to_string(), 0);
+        }
+
+        for cmd in &ir_program.main {
+            if let IR::Call {
+                procedure,
+                arguments,
+            } = cmd
+            {
+                calls_to_process.insert(procedure.clone());
+                *call_counts.get_mut(procedure).unwrap() += 1;
+            }
+        }
+
+        for _ in 0..ir_program.procedures.len() {
+            let to_process: HashSet<_> = calls_to_process
+                .difference(&calls_processed)
+                .cloned()
+                .collect();
+            let mut new_calls = HashSet::new();
+
+            for proc_name in to_process {
+                let code = &self.ir_proc_info.get(&proc_name).unwrap().cmds;
+                for ir in code {
+                    if let IR::Call {
+                        procedure,
+                        arguments,
+                    } = ir
+                    {
+                        new_calls.insert(procedure.clone());
+                        *call_counts.get_mut(procedure).unwrap() += 1;
+                    }
+                }
+            }
+            calls_processed.extend(new_calls);
+        }
+
+        // if its cheaper to just do the procedure
+        for proc in &ir_program.procedures {
+            if get_estimated_call_cost(proc.1) > get_estimated_proc_cost(proc.1) {
+                self.proc_info.get_mut(proc.0).unwrap().do_inline = true;
+            }
+        }
+    }
+}
+
+fn get_estimated_call_cost(ir_proc: &ProcedureInfo) -> i64 {
+    return (ir_proc.args.len() * 50) as i64;
+}
+
+fn get_estimated_proc_cost(ir_proc: &ProcedureInfo) -> i64 {
+    return (ir_proc.cmds.len() * 50) as i64;
 }

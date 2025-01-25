@@ -72,13 +72,13 @@ pub fn optimize(gvme_prog: GVMeProgram) -> GVMeProgram {
             | GVMe::jz(..)
             | GVMe::jnz(..)
             | GVMe::RTRN(_)
+            | GVMe::PUT(_)
             | GVMe::jposz(..)
             | GVMe::jnegz(..) => {
                 last_stored = None;
                 last_stored_i = None;
             }
             GVMe::GET(_) => {}
-            GVMe::PUT(_) => {}
             GVMe::LOAD(_) => {}
             GVMe::LOADI(_) => {}
             GVMe::ADD(_) => {}
@@ -89,8 +89,8 @@ pub fn optimize(gvme_prog: GVMeProgram) -> GVMeProgram {
                 last_stored = Some(0);
                 last_stored_i = None;
             }
-            GVMe::HALF => {},
-            GVMe::HALT => {},
+            GVMe::HALF => {}
+            GVMe::HALT => {}
             GVMe::comment { .. } => {}
             GVMe::lbl { .. } => {}
         }
