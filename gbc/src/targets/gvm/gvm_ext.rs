@@ -156,7 +156,6 @@ impl<'a> GVMeGnerator<'a> {
         // label setup if more are needed
         self.next_available_label = ir_program.next_label;
 
-        // TODO figure out which procedures to inline !!
 
         // generate stubs for all procedures
         for (name, proc) in &ir_program.procedures {
@@ -1010,8 +1009,16 @@ impl<'a> GVMeGnerator<'a> {
                 .memory_address,
         );
 
-        self.memory.allocate_builtin_arg("last_arg1", &proc_name);
-        self.memory.allocate_builtin_arg("last_arg2", &proc_name);
+        args.push(
+            self.memory
+                .allocate_builtin_arg("last_arg1", &proc_name)
+                .memory_address,
+        );
+        args.push(
+            self.memory
+                .allocate_builtin_arg("last_arg2", &proc_name)
+                .memory_address,
+        );
 
         self.next_available_label += 1;
 
@@ -1184,8 +1191,10 @@ impl<'a> GVMeGnerator<'a> {
 
         let arg1 = proc_info.args[0];
         let arg2 = proc_info.args[1];
-        let div_res = proc_info.args[2];
-        let mod_res = proc_info.args[3];
+        let div_res_rtn = proc_info.args[2];
+        let mod_res_rtn = proc_info.args[3];
+        let last_arg1 = proc_info.args[4];
+        let last_arg2 = proc_info.args[5];
 
         let zero = 0;
         let one = 1;
@@ -1196,6 +1205,10 @@ impl<'a> GVMeGnerator<'a> {
         let power_of_two = self.last_mem_slot - 2;
 
         let arg2_cpy = self.last_mem_slot - 3;
+
+        let div_res = self.last_mem_slot - 4;
+        let mod_res = self.last_mem_slot - 5;
+        let sign_flag = self.last_mem_slot - 6;
 
         let arg_1_pos = self.next_label();
         let arg_2_pos = self.next_label();
@@ -1212,10 +1225,12 @@ impl<'a> GVMeGnerator<'a> {
             name: format!(""),
         });
 
+
         // sign = 1, mod_sign = 1
         self.const_in_acc(&one);
         self.buff.push(GVMe::STORE(arg1_positive));
         self.buff.push(GVMe::STORE(arg2_positive));
+        self.buff.push(GVMe::STORE(sign_flag));
 
         // if arg1 < 0
         self.buff.push(GVMe::LOAD(arg1));
@@ -1223,6 +1238,7 @@ impl<'a> GVMeGnerator<'a> {
 
         self.const_in_acc(&m_one);
         self.buff.push(GVMe::STORE(arg1_positive));
+        self.buff.push(GVMe::STORE(sign_flag));
         self.const_in_acc(&zero);
         self.buff.push(GVMe::SUB(arg1));
         self.buff.push(GVMe::STORE(arg1));
@@ -1240,6 +1256,9 @@ impl<'a> GVMeGnerator<'a> {
         self.buff.push(GVMe::STORE(arg2_positive));
 
         self.const_in_acc(&zero);
+        self.buff.push(GVMe::SUB(sign_flag));
+        self.buff.push(GVMe::STORE(sign_flag));
+        self.const_in_acc(&zero);
         self.buff.push(GVMe::SUB(arg2));
         self.buff.push(GVMe::STORE(arg2));
 
@@ -1250,10 +1269,26 @@ impl<'a> GVMeGnerator<'a> {
         self.buff.push(GVMe::STORE(arg2_cpy));
 
         //TODO VVVVVV
+        let loop2_end = self.next_label();
 
+        let skip = self.next_label();
         // CHECK IF LAST ARGS ARE THE SAME
+        self.buff.push(GVMe::LOAD(arg2));
+        self.buff.push(GVMe::SUB(last_arg2));
+        self.buff.push(GVMe::jnz(skip));
+        self.buff.push(GVMe::LOAD(arg1));
+        self.buff.push(GVMe::SUB(last_arg1));
+        self.buff.push(GVMe::jz(loop2_end));
 
+        self.buff.push(GVMe::lbl {
+            idx: skip,
+            name: "".to_owned(),
+        });
         // STORE CURRENT ARGS TO LAST ARGS
+        self.buff.push(GVMe::LOAD(arg2));
+        self.buff.push(GVMe::STORE(last_arg2));
+        self.buff.push(GVMe::LOAD(arg1));
+        self.buff.push(GVMe::STORE(last_arg1));
 
         // CARRY ON
 
@@ -1262,6 +1297,9 @@ impl<'a> GVMeGnerator<'a> {
 
         self.const_in_acc(&one);
         self.buff.push(GVMe::STORE(power_of_two));
+
+        self.buff.push(GVMe::LOAD(arg1));
+        self.buff.push(GVMe::STORE(mod_res));
 
         /*
         while arg2 - arg1 < 0:
@@ -1275,7 +1313,7 @@ impl<'a> GVMeGnerator<'a> {
             name: format!(""),
         });
         self.buff.push(GVMe::LOAD(arg2));
-        self.buff.push(GVMe::SUB(arg1));
+        self.buff.push(GVMe::SUB(mod_res));
         self.buff.push(GVMe::jpos(loop_exit1.clone()));
         self.buff.push(GVMe::LOAD(arg2));
         self.buff.push(GVMe::ADD(arg2));
@@ -1301,7 +1339,6 @@ impl<'a> GVMeGnerator<'a> {
             power_of_two = power_of_two // 2
         */
         let loop2_start = self.next_label();
-        let loop2_end = self.next_label();
         let inner_if_fail = self.next_label();
 
         self.buff.push(GVMe::lbl {
@@ -1311,12 +1348,12 @@ impl<'a> GVMeGnerator<'a> {
         self.buff.push(GVMe::LOAD(power_of_two));
         self.buff.push(GVMe::jnegz(loop2_end.clone()));
 
-        self.buff.push(GVMe::LOAD(arg1));
+        self.buff.push(GVMe::LOAD(mod_res));
         self.buff.push(GVMe::SUB(arg2));
         self.buff.push(GVMe::jneg(inner_if_fail.clone()));
-        self.buff.push(GVMe::LOAD(arg1));
+        self.buff.push(GVMe::LOAD(mod_res));
         self.buff.push(GVMe::SUB(arg2));
-        self.buff.push(GVMe::STORE(arg1));
+        self.buff.push(GVMe::STORE(mod_res));
 
         self.buff.push(GVMe::LOAD(div_res));
         self.buff.push(GVMe::ADD(power_of_two));
@@ -1341,6 +1378,31 @@ impl<'a> GVMeGnerator<'a> {
             name: format!(""),
         });
 
+        // what if r == 0 ?????
+        let fix_mod = self.next_label();
+        let skip_sign = self.next_label();
+        self.buff.push(GVMe::LOAD(mod_res));
+        self.buff.push(GVMe::jnz(fix_mod));
+        self.buff.push(GVMe::STORE(mod_res_rtn));
+
+        self.buff.push(GVMe::LOAD(sign_flag));
+        self.buff.push(GVMe::jpos(skip_sign));
+
+        self.const_in_acc(&zero);
+        self.buff.push(GVMe::SUB(div_res));
+        self.buff.push(GVMe::STORE(div_res));
+
+        self.buff.push(GVMe::lbl {
+            idx: skip_sign,
+            name: format!(""),
+        });
+        self.buff.push(GVMe::LOAD(div_res));
+        self.buff.push(GVMe::STORE(div_res_rtn));
+
+        self.buff.push(GVMe::RTRN(proc_info.return_address));
+
+        self.buff.push(GVMe::lbl { idx: fix_mod, name: "".to_owned() });
+
         // arg1 positive
         let arg1_is_in_fact_negative = self.next_label();
         self.buff.push(GVMe::LOAD(arg1_positive));
@@ -1351,8 +1413,10 @@ impl<'a> GVMeGnerator<'a> {
         self.buff.push(GVMe::LOAD(arg2_positive));
         self.buff.push(GVMe::jneg(arg1_pos_and_arg2_negative));
         // x>0 y>0 -> nothing
-        self.buff.push(GVMe::LOAD(arg1));
-        self.buff.push(GVMe::STORE(mod_res));
+        self.buff.push(GVMe::LOAD(mod_res));
+        self.buff.push(GVMe::STORE(mod_res_rtn));
+        self.buff.push(GVMe::LOAD(div_res));
+        self.buff.push(GVMe::STORE(div_res_rtn));
         self.buff.push(GVMe::RTRN(proc_info.return_address));
 
         // arg1 pos, arg2 neg
@@ -1360,13 +1424,14 @@ impl<'a> GVMeGnerator<'a> {
             idx: arg1_pos_and_arg2_negative,
             name: format!(""),
         });
+
         // x>0 y<0 -> q = -1 - q and r = r - y
         self.const_in_acc(&m_one);
         self.buff.push(GVMe::SUB(div_res));
-        self.buff.push(GVMe::STORE(div_res));
-        self.buff.push(GVMe::LOAD(arg1));
+        self.buff.push(GVMe::STORE(div_res_rtn));
+        self.buff.push(GVMe::LOAD(mod_res));
         self.buff.push(GVMe::SUB(arg2_cpy));
-        self.buff.push(GVMe::STORE(mod_res));
+        self.buff.push(GVMe::STORE(mod_res_rtn));
         self.buff.push(GVMe::RTRN(proc_info.return_address));
 
         // arg1 negative
@@ -1381,10 +1446,10 @@ impl<'a> GVMeGnerator<'a> {
         // x<0 y>0 -> q = -1 - q and r = y - r
         self.const_in_acc(&m_one);
         self.buff.push(GVMe::SUB(div_res));
-        self.buff.push(GVMe::STORE(div_res));
+        self.buff.push(GVMe::STORE(div_res_rtn));
         self.buff.push(GVMe::LOAD(arg2_cpy));
-        self.buff.push(GVMe::SUB(arg1));
-        self.buff.push(GVMe::STORE(mod_res));
+        self.buff.push(GVMe::SUB(mod_res));
+        self.buff.push(GVMe::STORE(mod_res_rtn));
         self.buff.push(GVMe::RTRN(proc_info.return_address));
 
         self.buff.push(GVMe::lbl {
@@ -1392,9 +1457,11 @@ impl<'a> GVMeGnerator<'a> {
             name: format!(""),
         });
         // x<0 y<0 -> r = -r
+        self.buff.push(GVMe::LOAD(div_res));
+        self.buff.push(GVMe::STORE(div_res_rtn));
         self.const_in_acc(&zero);
-        self.buff.push(GVMe::SUB(arg1));
-        self.buff.push(GVMe::STORE(mod_res));
+        self.buff.push(GVMe::SUB(mod_res));
+        self.buff.push(GVMe::STORE(mod_res_rtn));
 
         self.buff.push(GVMe::RTRN(proc_info.return_address));
     }

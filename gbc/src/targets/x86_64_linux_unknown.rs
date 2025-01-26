@@ -82,7 +82,10 @@ impl CodeBlock {
                         out_block.asm += &format!("mov qword [rbp-{}], 0\n", out_block.cur_offset);
                         out_block.cur_offset += 8;
                     } else {
-                        todo!();
+                        let bounds = array_bounds.unwrap();
+
+
+                        
                     }
                 }
                 _ => {}
