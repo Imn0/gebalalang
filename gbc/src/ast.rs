@@ -5,7 +5,7 @@ use crate::{
 
 use std::{
     collections::HashMap,
-    ops::{self, Not},
+    ops::{self},
 };
 use tree_sitter::{Node, Tree};
 use tree_sitter_gbl::LANGUAGE;
@@ -41,6 +41,7 @@ pub struct Procedure {
     pub location: Location,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct MainBlock {
     pub declarations: Vec<Declaration>,
@@ -49,6 +50,7 @@ pub struct MainBlock {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum Command {
     Assignment {
         identifier: Identifier,
@@ -264,7 +266,7 @@ impl Program {
                 declarations: _,
                 commands: _,
                 location: _,
-                prio,
+                prio: _,
             }) = self.ast.procedures.get(&proc.name)
             {
                 self.ast.is_valid = false;

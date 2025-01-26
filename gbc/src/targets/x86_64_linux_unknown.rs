@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    process::{Command, ExitStatus},
-};
+use std::{collections::HashMap, process::Command};
 
 use crate::code_gen::ir::{IrOperand, IR};
 
@@ -22,9 +19,9 @@ impl Compile for X86_64LinuxUnknownTarget {
         let main_bloc = CodeBlock::compile_main(&ir_prog.main);
         out += &main_bloc.asm;
         if cfg!(debug_assertions) {
-            std::fs::write("./a.asm", out.clone());
+            let _ = std::fs::write("./a.asm", out.clone());
         }
-        std::fs::write("/tmp/a.asm", out);
+        let _ = std::fs::write("/tmp/a.asm", out);
         let assembly_status = Command::new("fasm")
             .arg("/tmp/a.asm")
             .arg("/tmp/a.out")
@@ -44,7 +41,7 @@ impl Compile for X86_64LinuxUnknownTarget {
 
 impl CodeBlock {
     fn compile_main(ir: &Vec<IR>) -> Self {
-        let mut out = String::new();
+        // let mut out = String::new();
 
         let mut out_block = CodeBlock {
             cur_offset: 0,
@@ -73,7 +70,7 @@ impl CodeBlock {
                 IR::Aloc {
                     name,
                     is_array,
-                    array_bounds,
+                    array_bounds: _,
                 } => {
                     if !is_array {
                         out_block
@@ -82,10 +79,7 @@ impl CodeBlock {
                         out_block.asm += &format!("mov qword [rbp-{}], 0\n", out_block.cur_offset);
                         out_block.cur_offset += 8;
                     } else {
-                        let bounds = array_bounds.unwrap();
-
-
-                        
+                        todo!();
                     }
                 }
                 _ => {}
@@ -103,11 +97,7 @@ impl CodeBlock {
 
     fn compile_op(&mut self, op: &IR) {
         match op {
-            IR::Aloc {
-                name,
-                is_array,
-                array_bounds,
-            } => {}
+            IR::Aloc { .. } => {}
             IR::Read(ir_operand) => {
                 let loc = self.get_ir_operand_loc(ir_operand);
                 self.asm += "call __BUILTIN_READ\n";
@@ -221,15 +211,9 @@ impl CodeBlock {
                 self.asm += &format!("cmp rax, {}\n", right);
                 self.asm += &format!("js {}\n", label);
             }
-            IR::Call {
-                procedure,
-                arguments,
-            } => todo!(),
+            IR::Call { .. } => todo!(),
             IR::Return => todo!(),
-            IR::Drop { name } => {}
-            // _ => {
-            //     todo!("{:?}", op)
-            // }
+            IR::Drop { .. } => {}
         }
     }
 
@@ -243,11 +227,8 @@ impl CodeBlock {
             IrOperand::Constant(val) => {
                 return format!("{}", val);
             }
-            IrOperand::ArrayConstAccess { base_name, idx } => todo!(),
-            IrOperand::ArrayDynamicAccess {
-                base_name,
-                idx_name,
-            } => todo!(),
+            IrOperand::ArrayConstAccess { .. } => todo!(),
+            IrOperand::ArrayDynamicAccess { .. } => todo!(),
         }
     }
 }

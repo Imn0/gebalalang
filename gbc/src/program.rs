@@ -23,6 +23,7 @@ pub struct Program {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
+#[allow(non_camel_case_types)]
 pub enum Target {
     GVM,
     Python,

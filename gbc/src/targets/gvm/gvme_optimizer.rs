@@ -1,4 +1,3 @@
-use crate::targets::GvmTarget;
 
 use super::gvm_ext::{GVMe, GVMeProgram};
 

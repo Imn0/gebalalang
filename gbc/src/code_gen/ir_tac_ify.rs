@@ -10,7 +10,7 @@ struct CodeBlock {
     pub code: Vec<IR>,
     vars: HashMap<String, i64>,
 }
-
+#[allow(dead_code)]
 impl IrProgram {
     pub fn tac_ify(self) -> IrProgram {
         let mut main_block = CodeBlock::default();
@@ -175,7 +175,7 @@ impl CodeBlock {
         }
 
         for arg in args {
-            let op = self.get_current_var(&IrOperand::Variable(arg.name.clone()));
+            let _ = self.get_current_var(&IrOperand::Variable(arg.name.clone()));
         }
     }
 

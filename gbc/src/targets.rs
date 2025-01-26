@@ -1,6 +1,5 @@
 use crate::{
     code_gen::IrProgram,
-    code_gen::ir::IR,
     program::{Program, Target},
 };
 

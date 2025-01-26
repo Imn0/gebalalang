@@ -23,7 +23,7 @@ impl Program {
 }
 
 impl Optimizer for RemoveUnusedProcedures {
-    fn optimize(&self, prog: &mut IrProgram) -> Result<(), ()> {
+    fn optimize(&self, _prog: &mut IrProgram) -> Result<(), ()> {
         Ok(())
     }
 }

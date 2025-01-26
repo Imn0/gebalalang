@@ -1,13 +1,13 @@
 use std::{
     collections::{HashMap, HashSet},
-    fmt::{self, Arguments},
+    fmt::{self},
     usize,
 };
 
 use regex::Regex;
 
 use crate::code_gen::{
-    ir::{self, IRNameTransformer, IrOperand, IR},
+    ir::{IRNameTransformer, IrOperand, IR},
     IrProgram, ProcedureInfo,
 };
 
@@ -109,7 +109,7 @@ pub struct GVMeProc {
     arg_names: Vec<String>,
 }
 
-struct GVMeGnerator<'a> {
+struct GVMeCompileContext<'a> {
     buff: Vec<GVMe>,
     code: Vec<GVMe>,
     proc_info: HashMap<String, GVMeProc>,
@@ -118,6 +118,8 @@ struct GVMeGnerator<'a> {
     current_scope: String,
     last_mem_slot: usize,
     next_available_label: usize,
+    mod_div_call_count: i64,
+    mul_call_count: i64,
     do_compile_mul: bool,
     do_compile_mod_div: bool,
     proc_to_compile: HashSet<String>,
@@ -129,7 +131,7 @@ struct VarLoc {
 }
 
 pub fn compile(ir_program: &IrProgram) -> GVMeProgram {
-    let mut generator = GVMeGnerator {
+    let mut generator = GVMeCompileContext {
         buff: vec![],
         code: vec![],
         memory: Memory::new(),
@@ -138,7 +140,9 @@ pub fn compile(ir_program: &IrProgram) -> GVMeProgram {
         last_mem_slot: 0x4000000000000000 - 32,
         next_available_label: 0,
         do_compile_mul: false,
+        mul_call_count: 0,
         do_compile_mod_div: false,
+        mod_div_call_count: 0,
         ir_proc_info: HashMap::new(),
         proc_to_compile: HashSet::new(),
     };
@@ -151,11 +155,10 @@ pub fn compile(ir_program: &IrProgram) -> GVMeProgram {
     }
 }
 
-impl<'a> GVMeGnerator<'a> {
+impl<'a> GVMeCompileContext<'a> {
     fn generate_code(&mut self, ir_program: &'a IrProgram) {
         // label setup if more are needed
         self.next_available_label = ir_program.next_label;
-
 
         // generate stubs for all procedures
         for (name, proc) in &ir_program.procedures {
@@ -419,6 +422,7 @@ impl<'a> GVMeGnerator<'a> {
                 }
 
                 self.do_compile_mul = true;
+                self.mul_call_count += 1;
 
                 let left_arg_loc = self.proc_info.get(BUILTINS::MUL.to_name()).unwrap().args[0];
                 let left_loc = self.get_var_location(left);
@@ -463,6 +467,7 @@ impl<'a> GVMeGnerator<'a> {
                 }
 
                 self.do_compile_mod_div = true;
+                self.mod_div_call_count += 1;
 
                 let left_arg_loc = self
                     .proc_info
@@ -508,6 +513,7 @@ impl<'a> GVMeGnerator<'a> {
             }
             IR::Mod { dest, left, right } => {
                 self.do_compile_mod_div = true;
+                self.mod_div_call_count += 1;
 
                 let left_arg_loc = self
                     .proc_info
@@ -1050,7 +1056,7 @@ impl<'a> GVMeGnerator<'a> {
         });
         let arg1 = proc_info.args[0];
         let arg2 = proc_info.args[1];
-        let res = proc_info.args[2];
+        let res_rtn = proc_info.args[2];
 
         let last_arg1 = self
             .memory
@@ -1065,15 +1071,28 @@ impl<'a> GVMeGnerator<'a> {
         let zero = 0;
         let one = 1;
         let m_one = -1;
-        self.const_in_acc(&zero);
-        self.buff.push(GVMe::STORE(res));
 
         let loop_end_lbl = self.next_label();
         let loop_start_lbl = self.next_label();
 
         let skip_add = self.next_label();
 
-        let sign_flag = self.last_mem_slot - 1;
+        let sign_flag = self
+            .memory
+            .allocate_var("sign_flag", BUILTINS::MUL.to_name())
+            .memory_address;
+        let arg1_op = self
+            .memory
+            .allocate_var("arg1_op", BUILTINS::MUL.to_name())
+            .memory_address;
+        let arg2_op = self
+            .memory
+            .allocate_var("arg2_op", BUILTINS::MUL.to_name())
+            .memory_address;
+        let res = self
+            .memory
+            .allocate_var("res", BUILTINS::MUL.to_name())
+            .memory_address;
         let arg_1_pos = self.next_label();
         let arg_2_pos = self.next_label();
 
@@ -1111,14 +1130,54 @@ impl<'a> GVMeGnerator<'a> {
             name: format!(""),
         });
         //TODO VVVVVV
-        // SWAP ARGS SO THE SMALLER ONE IS SECOND
+        // SWAP ARGS SO THE SMALLER ONE IS FIRST
+        let tmp = self.last_mem_slot - 2;
+        let dont_swap = self.next_label();
+        self.buff.push(GVMe::SUB(arg1));
+        self.buff.push(GVMe::jposz(dont_swap));
+        self.buff.push(GVMe::LOAD(arg1));
+        self.buff.push(GVMe::STORE(tmp));
+        self.buff.push(GVMe::LOAD(arg2));
+        self.buff.push(GVMe::STORE(arg1));
+        self.buff.push(GVMe::LOAD(tmp));
+        self.buff.push(GVMe::STORE(arg2));
+        self.buff.push(GVMe::lbl {
+            idx: dont_swap,
+            name: format!(""),
+        });
+        if self.mul_call_count > 3 {
+            // CHECK IF LAST ARGS ARE THE SAME
+            let _skip = self.next_label();
+            self.buff.push(GVMe::LOAD(arg2));
+            self.buff.push(GVMe::SUB(last_arg2));
+            self.buff.push(GVMe::jnz(_skip));
+            self.buff.push(GVMe::LOAD(arg1));
+            self.buff.push(GVMe::SUB(last_arg1));
+            self.buff.push(GVMe::jz(loop_end_lbl));
 
-        // CHECK IF LAST ARGS ARE THE SAME
+            self.buff.push(GVMe::lbl {
+                idx: _skip,
+                name: "".to_owned(),
+            });
+        }
 
         // STORE CURRENT ARGS TO LAST ARGS
 
-        // CARRY ON
+        self.const_in_acc(&zero);
+        self.buff.push(GVMe::STORE(res));
+        self.buff.push(GVMe::LOAD(arg2));
+        if self.mul_call_count > 3 {
+            self.buff.push(GVMe::STORE(last_arg2));
+        }
+        self.buff.push(GVMe::STORE(arg2_op));
         self.buff.push(GVMe::LOAD(arg1));
+
+        if self.mul_call_count > 3 {
+            self.buff.push(GVMe::STORE(last_arg1));
+        }
+        self.buff.push(GVMe::STORE(arg1_op));
+        // CARRY ON
+        self.buff.push(GVMe::LOAD(arg1_op));
         self.buff.push(GVMe::lbl {
             idx: loop_start_lbl.clone(),
             name: format!(""),
@@ -1127,32 +1186,31 @@ impl<'a> GVMeGnerator<'a> {
 
         self.buff.push(GVMe::HALF);
         self.buff.push(GVMe::ADD(0));
-        self.buff.push(GVMe::SUB(arg1));
+        self.buff.push(GVMe::SUB(arg1_op));
 
         self.buff.push(GVMe::jz(skip_add.clone()));
-        self.buff.push(GVMe::LOAD(arg1));
+        self.buff.push(GVMe::LOAD(arg1_op));
         self.buff.push(GVMe::LOAD(res));
-        self.buff.push(GVMe::ADD(arg2));
+        self.buff.push(GVMe::ADD(arg2_op));
         self.buff.push(GVMe::STORE(res));
         self.buff.push(GVMe::lbl {
             idx: skip_add,
             name: format!(""),
         });
 
-        self.buff.push(GVMe::LOAD(arg2));
-        self.buff.push(GVMe::ADD(arg2));
-        self.buff.push(GVMe::STORE(arg2));
+        self.buff.push(GVMe::LOAD(arg2_op));
+        self.buff.push(GVMe::ADD(arg2_op));
+        self.buff.push(GVMe::STORE(arg2_op));
 
-        self.buff.push(GVMe::LOAD(arg1));
+        self.buff.push(GVMe::LOAD(arg1_op));
         self.buff.push(GVMe::HALF);
-        self.buff.push(GVMe::STORE(arg1));
+        self.buff.push(GVMe::STORE(arg1_op));
 
         self.buff.push(GVMe::lbl_jump(loop_start_lbl));
         self.buff.push(GVMe::lbl {
             idx: loop_end_lbl,
             name: format!(""),
         });
-
         let is_pos = self.next_label();
 
         let skip = self.next_label();
@@ -1173,7 +1231,7 @@ impl<'a> GVMeGnerator<'a> {
             idx: skip,
             name: format!(""),
         });
-        self.buff.push(GVMe::STORE(res));
+        self.buff.push(GVMe::STORE(res_rtn));
 
         self.buff.push(GVMe::RTRN(proc_info.return_address));
     }
@@ -1199,16 +1257,37 @@ impl<'a> GVMeGnerator<'a> {
         let zero = 0;
         let one = 1;
         let m_one = -1;
-        let arg1_positive = self.last_mem_slot;
-        let arg2_positive = self.last_mem_slot - 1;
+        let arg1_positive = self
+            .memory
+            .allocate_var("arg1_positive", BUILTINS::DIV_MOD.to_name())
+            .memory_address;
+        let arg2_positive = self
+            .memory
+            .allocate_var("arg2_positive", BUILTINS::DIV_MOD.to_name())
+            .memory_address;
 
-        let power_of_two = self.last_mem_slot - 2;
+        let power_of_two = self
+            .memory
+            .allocate_var("power_of_two", BUILTINS::DIV_MOD.to_name())
+            .memory_address;
 
-        let arg2_cpy = self.last_mem_slot - 3;
+        let arg2_cpy = self
+            .memory
+            .allocate_var("arg2_cpy", BUILTINS::DIV_MOD.to_name())
+            .memory_address;
 
-        let div_res = self.last_mem_slot - 4;
-        let mod_res = self.last_mem_slot - 5;
-        let sign_flag = self.last_mem_slot - 6;
+        let div_res = self
+            .memory
+            .allocate_var("div_res", BUILTINS::DIV_MOD.to_name())
+            .memory_address;
+        let mod_res = self
+            .memory
+            .allocate_var("mod_res", BUILTINS::DIV_MOD.to_name())
+            .memory_address;
+        let sign_flag = self
+            .memory
+            .allocate_var("sign_flag", BUILTINS::DIV_MOD.to_name())
+            .memory_address;
 
         let arg_1_pos = self.next_label();
         let arg_2_pos = self.next_label();
@@ -1224,7 +1303,6 @@ impl<'a> GVMeGnerator<'a> {
             idx: arg_2_zero,
             name: format!(""),
         });
-
 
         // sign = 1, mod_sign = 1
         self.const_in_acc(&one);
@@ -1271,25 +1349,26 @@ impl<'a> GVMeGnerator<'a> {
         //TODO VVVVVV
         let loop2_end = self.next_label();
 
-        let skip = self.next_label();
-        // CHECK IF LAST ARGS ARE THE SAME
-        self.buff.push(GVMe::LOAD(arg2));
-        self.buff.push(GVMe::SUB(last_arg2));
-        self.buff.push(GVMe::jnz(skip));
-        self.buff.push(GVMe::LOAD(arg1));
-        self.buff.push(GVMe::SUB(last_arg1));
-        self.buff.push(GVMe::jz(loop2_end));
+        if self.mod_div_call_count > 1 {
+            let skip = self.next_label();
+            // CHECK IF LAST ARGS ARE THE SAME
+            self.buff.push(GVMe::LOAD(arg2));
+            self.buff.push(GVMe::SUB(last_arg2));
+            self.buff.push(GVMe::jnz(skip));
+            self.buff.push(GVMe::LOAD(arg1));
+            self.buff.push(GVMe::SUB(last_arg1));
+            self.buff.push(GVMe::jz(loop2_end));
 
-        self.buff.push(GVMe::lbl {
-            idx: skip,
-            name: "".to_owned(),
-        });
-        // STORE CURRENT ARGS TO LAST ARGS
-        self.buff.push(GVMe::LOAD(arg2));
-        self.buff.push(GVMe::STORE(last_arg2));
-        self.buff.push(GVMe::LOAD(arg1));
-        self.buff.push(GVMe::STORE(last_arg1));
-
+            self.buff.push(GVMe::lbl {
+                idx: skip,
+                name: "".to_owned(),
+            });
+            // STORE CURRENT ARGS TO LAST ARGS
+            self.buff.push(GVMe::LOAD(arg2));
+            self.buff.push(GVMe::STORE(last_arg2));
+            self.buff.push(GVMe::LOAD(arg1));
+            self.buff.push(GVMe::STORE(last_arg1));
+        }
         // CARRY ON
 
         self.const_in_acc(&zero);
@@ -1401,7 +1480,10 @@ impl<'a> GVMeGnerator<'a> {
 
         self.buff.push(GVMe::RTRN(proc_info.return_address));
 
-        self.buff.push(GVMe::lbl { idx: fix_mod, name: "".to_owned() });
+        self.buff.push(GVMe::lbl {
+            idx: fix_mod,
+            name: "".to_owned(),
+        });
 
         // arg1 positive
         let arg1_is_in_fact_negative = self.next_label();
@@ -1484,7 +1566,7 @@ impl<'a> GVMeGnerator<'a> {
         for cmd in &ir_program.main {
             if let IR::Call {
                 procedure,
-                arguments,
+                arguments: _,
             } = cmd
             {
                 calls_to_process.insert(procedure.clone());
@@ -1504,7 +1586,7 @@ impl<'a> GVMeGnerator<'a> {
                 for ir in code {
                     if let IR::Call {
                         procedure,
-                        arguments,
+                        arguments: _,
                     } = ir
                     {
                         new_calls.insert(procedure.clone());

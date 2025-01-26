@@ -28,7 +28,6 @@ struct ValidateInfo {
 #[derive(Clone, Debug)]
 struct ProcedureInfo {
     args: Vec<bool>,
-    location: Location,
 }
 
 pub struct GeneratorValidator {
@@ -36,7 +35,6 @@ pub struct GeneratorValidator {
     procedures: HashMap<String, ProcedureInfo>,
     messages: Vec<ValidateInfo>,
     next_memory_slot: usize,
-    last_mem_slot: usize,
     current_scope: String,
     has_warnings: bool,
     has_errors: bool,
@@ -49,7 +47,6 @@ impl GeneratorValidator {
             symbols: HashMap::new(),
             procedures: HashMap::new(),
             next_memory_slot: 13213,
-            last_mem_slot: 0x4000000000000000,
             current_scope: "".to_owned(),
             has_errors: false,
             has_warnings: false,
@@ -174,15 +171,6 @@ impl GeneratorValidator {
     fn get_variable_current_scope(&self, name: &str) -> Result<SymbolLocation, String> {
         let scoped_name = self.current_scope.clone() + name;
         if let Some(loc) = self.symbols.get(&scoped_name) {
-            return Ok(loc.clone());
-        } else {
-            return Err(format!("'{}' not declared in this scope", name));
-        }
-    }
-
-    fn get_variable_global_scope(&self, name: &str) -> Result<SymbolLocation, String> {
-        let g_name = self.variable_global_scope_name(name);
-        if let Some(loc) = self.symbols.get(&g_name) {
             return Ok(loc.clone());
         } else {
             return Err(format!("'{}' not declared in this scope", name));
@@ -364,7 +352,7 @@ impl GeneratorValidator {
     /// Loads value to p_0
     fn generate_value(&mut self, value: &Value) {
         match value {
-            Value::Number(num) => {}
+            Value::Number(_) => {}
             Value::Identifier(ident) => {
                 let result = self.get_variable_current_scope(&ident.name);
                 match result {
@@ -436,7 +424,7 @@ impl GeneratorValidator {
                                 });
                             }
                         }
-                        Either::Right(idx_num) => {
+                        Either::Right(_) => {
                             let symbol_loc = self.get_variable_current_scope(&ident.name).unwrap();
                             if !symbol_loc.is_array {
                                 self.add_message(ValidateInfo {
@@ -553,7 +541,7 @@ impl GeneratorValidator {
                         });
                     }
                     if !dest_loc.is_pointer {
-                        let final_loc = self.get_variable_w_idx(&ident.name, *idx_num);
+                        let _final_loc = self.get_variable_w_idx(&ident.name, *idx_num);
                     }
                 }
             }
@@ -600,7 +588,7 @@ impl GeneratorValidator {
         if let Command::Assignment {
             identifier,
             expression,
-            location,
+            location: _,
         } = command
         {
             match expression {
@@ -685,9 +673,9 @@ impl GeneratorValidator {
             Command::If {
                 condition,
                 then_commands,
-                location,
+                location: _,
             } => {
-                let jump_instruction = self.generate_condition(condition);
+                let _jump_instruction = self.generate_condition(condition);
                 for cmd in then_commands {
                     self.generate_command(cmd);
                 }
@@ -696,9 +684,9 @@ impl GeneratorValidator {
                 condition,
                 then_commands,
                 else_commands,
-                location,
+                location: _,
             } => {
-                let jump_instruction = self.generate_condition(condition);
+                let _jump_instruction = self.generate_condition(condition);
                 for cmd in then_commands {
                     self.generate_command(cmd);
                 }
@@ -709,7 +697,7 @@ impl GeneratorValidator {
             Command::While {
                 condition,
                 commands,
-                location,
+                location: _,
             } => {
                 self.generate_condition(&(condition.clone()));
                 for cmd in commands {
@@ -720,7 +708,7 @@ impl GeneratorValidator {
             Command::Repeat {
                 commands,
                 condition,
-                location,
+                location: _,
             } => {
                 for cmd in commands {
                     self.generate_command(cmd);
@@ -793,7 +781,7 @@ impl GeneratorValidator {
                 commands,
                 location,
             } => {
-                let for_iter_loc = self
+                let _for_iter_loc = self
                     .allocate_variable_scoped(variable.to_string(), 0, 0, false, true)
                     .unwrap_or_else(|e| {
                         self.add_message(ValidateInfo {
@@ -832,7 +820,7 @@ impl GeneratorValidator {
     }
 
     fn generate_procedure(&mut self, procedure: &Procedure) {
-        let return_address_location = self.allocate_procedure(procedure.name.clone());
+        let _return_address_location = self.allocate_procedure(procedure.name.clone());
 
         self.current_scope = format!("{}::", procedure.name.clone());
 
@@ -841,7 +829,6 @@ impl GeneratorValidator {
             procedure.name.clone(),
             ProcedureInfo {
                 args: vec![],
-                location: procedure.location.clone(),
             },
         );
 
@@ -889,7 +876,6 @@ impl GeneratorValidator {
             procedure.name.clone(),
             ProcedureInfo {
                 args: args_vec,
-                location: procedure.location.clone(),
             },
         );
 

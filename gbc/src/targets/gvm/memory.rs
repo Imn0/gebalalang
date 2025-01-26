@@ -1,10 +1,7 @@
 use std::{
-    cmp::{max, min},
+    cmp::min,
     collections::{HashMap, HashSet},
-    f32::consts::E,
 };
-
-use crate::ast::{Declaration, Identifier, Location, ProcArgument};
 
 #[derive(Debug, Clone)]
 pub struct SymbolLocation {
@@ -13,15 +10,6 @@ pub struct SymbolLocation {
     pub is_pointer: bool,
 }
 
-impl SymbolLocation {
-    pub fn new() -> Self {
-        SymbolLocation {
-            memory_address: 0,
-            is_array: false,
-            is_pointer: false,
-        }
-    }
-}
 #[derive(Debug, Default)]
 pub struct Memory {
     symbols: HashMap<String, SymbolLocation>,
@@ -62,9 +50,9 @@ impl Memory {
         self.next_memory_slot += 1;
     }
 
-    pub fn allocate_var(&mut self, name: &str, scope: &str) {
+    pub fn allocate_var(&mut self, name: &str, scope: &str)-> SymbolLocation {
         let scoped_name = scoped_name(name, scope);
-        self.allocate(scoped_name, false, false);
+        return  self.allocate(scoped_name, false, false);
     }
 
     pub fn allocate_proc_arg(&mut self, name: &str, scope: &str, is_array: bool) -> SymbolLocation {
