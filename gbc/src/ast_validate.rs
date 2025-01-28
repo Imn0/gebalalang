@@ -20,8 +20,8 @@ impl Validator for NoRecursiveCalls {
 
 impl Validator for NoInvalidAccesses {
     fn check(&self, prog: &Program) -> Result<(), ()> {
-        let mut val = GeneratorValidator::new();
-        val.validate(prog)
+        let mut val = GeneratorValidator::new(prog);
+        val.validate()
     }
 }
 

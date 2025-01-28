@@ -33,7 +33,6 @@ pub enum Target {
 pub struct Config {
     pub verbose: bool,
     pub werror: bool,
-    pub procedure_separate_namespace: bool,
     pub target: Target,
     pub source_path: String,
     pub output_path: String,
@@ -48,7 +47,6 @@ impl Default for Config {
         Config {
             verbose: false,
             werror: true,
-            procedure_separate_namespace: false,
             target: Target::GVM,
             source_path: "".to_owned(),
             output_path: "".to_owned(),

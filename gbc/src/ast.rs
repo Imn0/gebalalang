@@ -559,15 +559,6 @@ impl Program {
             vec![]
         };
 
-        if let None = self.ast.procedures.get(&proc_name) {
-            self.print_message(Message::CodeMessage {
-                severity: MessageSeverity::ERROR,
-                message: format!("procedure {} not defined", proc_name).as_str(),
-                location: node.get_location(),
-            });
-            self.ast.is_valid = false;
-        }
-
         vec![Command::ProcedureCall {
             proc_name: proc_name,
             arguments: args,
