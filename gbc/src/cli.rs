@@ -22,9 +22,6 @@ pub struct CliArgs {
     #[arg(long, action = clap::ArgAction::SetTrue, help="Verbose error logging")]
     verbose: bool,
 
-    #[arg(long, action = clap::ArgAction::SetTrue, help="Use separate namesapces for variable and procedure names")]
-    variable_separation: bool,
-
     #[arg(short, long = "unsafe", action = clap::ArgAction::SetTrue, help="Allows for udefined access")]
     _unsafe: bool,
 
@@ -61,7 +58,6 @@ impl Program {
 
         self.config.source_path = cli.input_file;
         self.config.output_path = cli.output;
-        self.config.procedure_separate_namespace = cli.variable_separation;
 
         let out_default = matches.value_source("output") == Some(ValueSource::DefaultValue);
 
