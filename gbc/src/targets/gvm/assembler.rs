@@ -185,7 +185,7 @@ pub fn assemble(gvme: &Vec<GVMe>, procs: &HashMap<String, GVMeProc>) -> Vec<GVM>
 
     // exapnd procedure calls
     for (i, gvme_op) in gvme.iter().enumerate() {
-        match gvme_op {
+        match &gvme_op {
             GVMe::call { name } => {
                 let proc_info = procs.get(name).unwrap().to_owned();
 

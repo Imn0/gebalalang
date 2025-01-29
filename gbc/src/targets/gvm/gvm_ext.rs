@@ -893,37 +893,37 @@ impl<'a> GVMeCompileContext<'a> {
 
         for cm in renamed_commands.iter() {
             let new_cm: IR = match cm {
-                IR::Label(label) => IR::Label(self.get_or_create_label(label, &mut label_map)),
-                IR::Jump(label) => IR::Jump(self.get_or_create_label(label, &mut label_map)),
+                IR::Label(label) => IR::Label(self.get_or_create_label(&label, &mut label_map)),
+                IR::Jump(label) => IR::Jump(self.get_or_create_label(&label, &mut label_map)),
                 IR::JZero { left, right, label } => IR::JZero {
                     left: left.clone(),
                     right: right.clone(),
-                    label: self.get_or_create_label(label, &mut label_map),
+                    label: self.get_or_create_label(&label, &mut label_map),
                 },
                 IR::JNotZero { left, right, label } => IR::JNotZero {
                     left: left.clone(),
                     right: right.clone(),
-                    label: self.get_or_create_label(label, &mut label_map),
+                    label: self.get_or_create_label(&label, &mut label_map),
                 },
                 IR::JPositive { left, right, label } => IR::JPositive {
                     left: left.clone(),
                     right: right.clone(),
-                    label: self.get_or_create_label(label, &mut label_map),
+                    label: self.get_or_create_label(&label, &mut label_map),
                 },
                 IR::JNegative { left, right, label } => IR::JNegative {
                     left: left.clone(),
                     right: right.clone(),
-                    label: self.get_or_create_label(label, &mut label_map),
+                    label: self.get_or_create_label(&label, &mut label_map),
                 },
                 IR::JPositiveOrZero { left, right, label } => IR::JPositiveOrZero {
                     left: left.clone(),
                     right: right.clone(),
-                    label: self.get_or_create_label(label, &mut label_map),
+                    label: self.get_or_create_label(&label, &mut label_map),
                 },
                 IR::JNegativeOrZero { left, right, label } => IR::JNegativeOrZero {
                     left: left.clone(),
                     right: right.clone(),
-                    label: self.get_or_create_label(label, &mut label_map),
+                    label: self.get_or_create_label(&label, &mut label_map),
                 },
                 _ => cm.clone(),
             };

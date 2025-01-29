@@ -9,7 +9,7 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(
     author = "Krzysztof Andrzejewski",
-    version = "0.6",
+    version = "0.6.5",
     about = "Gebalalang Compiler",
     long_about = "yap yap yap"
 )]
