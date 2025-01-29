@@ -37,57 +37,8 @@ pub fn optimize(gvme_prog: GVMeProgram) -> GVMeProgram {
         prog.push(ins);
     }
 
-    let mut v = vec![];
-    prog.reverse();
-
-    last_stored = None;
-
-    for ins in prog {
-        match ins {
-            GVMe::STORE(addr) => {
-                if let Some(loc) = last_stored {
-                    if addr == loc {
-                        continue;
-                    }
-                }
-                last_stored = Some(addr);
-            }
-
-            GVMe::call { .. }
-            | GVMe::STOREI(..)
-            | GVMe::lbl_jump(..)
-            | GVMe::jneg(..)
-            | GVMe::jpos(..)
-            | GVMe::jz(..)
-            | GVMe::jnz(..)
-            | GVMe::RTRN(_)
-            | GVMe::PUT(_)
-            | GVMe::jposz(..)
-            | GVMe::jnegz(..) => {
-                last_stored = None;
-            }
-            GVMe::GET(_) => {}
-            GVMe::LOAD(_) => {}
-            GVMe::LOADI(_) => {}
-            GVMe::ADD(_) => {}
-            GVMe::SUB(_) => {}
-            GVMe::ADDI(_) => {}
-            GVMe::SUBI(_) => {}
-            GVMe::SET(_) => {
-                last_stored = Some(0);
-            }
-            GVMe::HALF => {}
-            GVMe::HALT => {}
-            GVMe::comment { .. } => {}
-            GVMe::lbl { .. } => {}
-        }
-
-        v.push(ins);
-    }
-
-    v.reverse();
     GVMeProgram {
-        code: v,
+        code: prog,
         proc_info: gvme_prog.proc_info,
     }
 }

@@ -7,6 +7,7 @@ mod assembler;
 mod gvm_ext;
 mod gvme_optimizer;
 mod memory;
+mod builtins;
 
 impl Compile for GvmTarget {
     fn compile(&self, ir_prog: &crate::code_gen::IrProgram) -> Box<[u8]> {

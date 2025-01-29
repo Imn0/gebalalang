@@ -11,7 +11,7 @@ use crate::code_gen::{
     IrProgram, ProcedureInfo,
 };
 
-use super::memory::Memory;
+use super::{builtins::BUILTINS, memory::Memory};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct LabelIdx(pub usize);
@@ -43,20 +43,6 @@ pub enum GVMe {
     jposz(LabelIdx),
     jnegz(LabelIdx),
     comment { cm: String },
-}
-
-#[allow(non_camel_case_types)]
-enum BUILTINS {
-    MUL,
-    DIV_MOD,
-}
-impl BUILTINS {
-    fn to_name(&self) -> &'static str {
-        match self {
-            BUILTINS::MUL => "__BUILTIN_MUL",
-            BUILTINS::DIV_MOD => "__BUILTIN_DIV_MOD",
-        }
-    }
 }
 
 impl fmt::Display for GVMe {
@@ -104,24 +90,25 @@ pub struct GVMeProgram {
 pub struct GVMeProc {
     pub label: LabelIdx,
     pub return_address: usize,
-    do_inline: bool,
-    args: Vec<usize>,
-    arg_names: Vec<String>,
+    pub do_inline: bool,
+    pub args: Vec<usize>,
+    pub arg_names: Vec<String>,
 }
 
-struct GVMeCompileContext<'a> {
-    buff: Vec<GVMe>,
+pub struct GVMeCompileContext<'a> {
+    pub memory: Memory,
+    pub next_available_label: usize,
+    pub proc_info: HashMap<String, GVMeProc>,
+    pub buff: Vec<GVMe>,
+    pub last_mem_slot: usize,
+    pub mul_call_count: i64,
     code: Vec<GVMe>,
-    proc_info: HashMap<String, GVMeProc>,
     ir_proc_info: HashMap<String, &'a ProcedureInfo>,
-    memory: Memory,
     current_scope: String,
-    last_mem_slot: usize,
-    next_available_label: usize,
-    mod_div_call_count: i64,
-    mul_call_count: i64,
+    pub mod_div_call_count: i64,
     do_compile_mul: bool,
     do_compile_mod_div: bool,
+    do_compile_mod: bool,
     proc_to_compile: HashSet<String>,
 }
 
@@ -143,6 +130,7 @@ pub fn compile(ir_program: &IrProgram) -> GVMeProgram {
         mul_call_count: 0,
         do_compile_mod_div: false,
         mod_div_call_count: 0,
+        do_compile_mod: false,
         ir_proc_info: HashMap::new(),
         proc_to_compile: HashSet::new(),
     };
@@ -172,16 +160,17 @@ impl<'a> GVMeCompileContext<'a> {
         // buitin procedures, not yet compiled only stubs
         let builtin_mul = self.generate_mul_procedure_stub();
         let builtin_mod_div = self.generate_div_mod_procedure_stub();
+        let builtin_mod = self.generate_mod_procedure_stub();
         self.proc_info
             .insert(BUILTINS::MUL.to_name().to_owned(), builtin_mul);
         self.proc_info
             .insert(BUILTINS::DIV_MOD.to_name().to_owned(), builtin_mod_div);
+        self.proc_info
+            .insert(BUILTINS::MOD.to_name().to_owned(), builtin_mod);
 
         // compile main program
         self.current_scope = "PROGRAM".to_owned();
-        for op in &ir_program.main {
-            self.compile_op(op);
-        }
+        self.compile_op(&ir_program.main);
         self.buff.push(GVMe::HALT);
 
         let mut compiled_procs: HashSet<String> = HashSet::new();
@@ -213,6 +202,10 @@ impl<'a> GVMeCompileContext<'a> {
 
         if self.do_compile_mod_div {
             self.compile_div_mod_builtin();
+        }
+
+        if self.do_compile_mod {
+            self.compile_mod_builtin();
         }
 
         // fill in all constants
@@ -252,425 +245,464 @@ impl<'a> GVMeCompileContext<'a> {
             idx: self.get_label(&proc_info.lbl),
             name: proc_info.name.clone(),
         });
-        for op in &proc_info.cmds {
-            self.compile_op(op);
-        }
+        self.compile_op(&proc_info.cmds);
     }
 
-    fn compile_op(&mut self, op: &IR) -> Option<()> {
-        match op {
-            IR::Aloc {
-                name,
-                is_array,
-                array_bounds,
-            } => {
-                if *is_array {
-                    let (left, right) = array_bounds.unwrap();
-                    self.memory
-                        .allocate_array(name, &self.current_scope, left, right);
-                } else {
-                    self.memory.allocate_var(name, &self.current_scope);
-                }
-                Some(())
-            }
-            IR::Drop { name } => {
-                self.memory.drop_var(name, &self.current_scope);
-                Some(())
-            }
-            IR::Mov { dest, src } => {
-                if let (Some(dest_loc), Some(src_loc)) = (
-                    self.get_var_location_no_extra_cmds(dest),
-                    self.get_var_location_no_extra_cmds(src),
-                ) {
-                    self.compile_load_loc_to_acc(&src_loc);
-                    self.compile_store_acc_to_loc(&dest_loc);
-                    return Some(());
-                } else {
-                    let dest_loc = self.get_var_location(dest);
-
-                    let stored;
-                    if dest_loc.loc == 0 {
-                        stored = true;
-                        self.buff.push(GVMe::STORE(self.last_mem_slot));
+    fn compile_op(&mut self, commands: &Vec<IR>) {
+        for (i, op) in commands.iter().enumerate() {
+            match op {
+                IR::Aloc {
+                    name,
+                    is_array,
+                    array_bounds,
+                } => {
+                    if *is_array {
+                        let (left, right) = array_bounds.unwrap();
+                        self.memory
+                            .allocate_array(name, &self.current_scope, left, right);
                     } else {
-                        stored = false;
+                        self.memory.allocate_var(name, &self.current_scope);
                     }
+                }
+                IR::Drop { name } => {
+                    self.memory.drop_var(name, &self.current_scope);
+                }
+                IR::Mov { dest, src } => {
+                    if let (Some(dest_loc), Some(src_loc)) = (
+                        self.get_var_location_no_extra_cmds(dest),
+                        self.get_var_location_no_extra_cmds(src),
+                    ) {
+                        self.compile_load_loc_to_acc(&src_loc);
+                        self.compile_store_acc_to_loc(&dest_loc);
+                    } else {
+                        let dest_loc = self.get_var_location(dest);
 
-                    let src_loc = self.get_var_location(src);
-
-                    self.compile_load_loc_to_acc(&src_loc);
-                    self.compile_store_acc_to_loc(&VarLoc {
-                        loc: if stored {
-                            self.last_mem_slot
+                        let stored;
+                        if dest_loc.loc == 0 {
+                            stored = true;
+                            self.buff.push(GVMe::STORE(self.last_mem_slot));
                         } else {
-                            dest_loc.loc
-                        },
-                        is_pointer: dest_loc.is_pointer,
-                    });
-                    Some(())
+                            stored = false;
+                        }
+
+                        let src_loc = self.get_var_location(src);
+
+                        self.compile_load_loc_to_acc(&src_loc);
+                        self.compile_store_acc_to_loc(&VarLoc {
+                            loc: if stored {
+                                self.last_mem_slot
+                            } else {
+                                dest_loc.loc
+                            },
+                            is_pointer: dest_loc.is_pointer,
+                        });
+                    }
                 }
-            }
-            IR::Add { dest, left, right } => {
-                if let (Some(dest_loc), Some(left_loc), Some(right_loc)) = (
-                    self.get_var_location_no_extra_cmds(dest),
-                    self.get_var_location_no_extra_cmds(left),
-                    self.get_var_location_no_extra_cmds(right),
-                ) {
-                    self.compile_load_loc_to_acc(&left_loc);
-                    if right_loc.is_pointer {
-                        self.buff.push(GVMe::ADDI(right_loc.loc));
-                    } else {
-                        self.buff.push(GVMe::ADD(right_loc.loc));
-                    }
-                    self.compile_store_acc_to_loc(&dest_loc);
-                } else {
-                    let mut dst_loc = self.get_var_location(dest);
-                    if dst_loc.loc == 0 {
-                        self.buff.push(GVMe::STORE(self.last_mem_slot));
-                        dst_loc.loc = self.last_mem_slot;
-                    }
-
-                    let mut left_loc = self.get_var_location(left);
-                    if left_loc.loc == 0 {
-                        self.buff.push(GVMe::STORE(self.last_mem_slot - 1));
-                        left_loc.loc = self.last_mem_slot - 1;
-                    }
-
-                    let right_loc = self.get_var_location(right);
-                    if right_loc.is_pointer {
-                        self.buff.push(GVMe::LOADI(right_loc.loc));
-                    } else {
-                        self.buff.push(GVMe::LOAD(right_loc.loc));
-                    }
-
-                    if left_loc.is_pointer {
-                        self.buff.push(GVMe::ADDI(left_loc.loc));
-                    } else {
-                        self.buff.push(GVMe::ADD(left_loc.loc));
-                    }
-
-                    self.compile_store_acc_to_loc(&dst_loc);
-                }
-
-                Some(())
-            }
-            IR::Sub { dest, left, right } => {
-                if let (Some(dest_loc), Some(left_loc), Some(right_loc)) = (
-                    self.get_var_location_no_extra_cmds(dest),
-                    self.get_var_location_no_extra_cmds(left),
-                    self.get_var_location_no_extra_cmds(right),
-                ) {
-                    self.compile_load_loc_to_acc(&left_loc);
-                    if right_loc.is_pointer {
-                        self.buff.push(GVMe::SUBI(right_loc.loc));
-                    } else {
-                        self.buff.push(GVMe::SUB(right_loc.loc));
-                    }
-                    self.compile_store_acc_to_loc(&dest_loc);
-                    Some(())
-                } else {
-                    let mut dst_loc = self.get_var_location(dest);
-                    if dst_loc.loc == 0 {
-                        self.buff.push(GVMe::STORE(self.last_mem_slot));
-                        dst_loc.loc = self.last_mem_slot;
-                    }
-
-                    let mut right_loc = self.get_var_location(right);
-                    if right_loc.loc == 0 {
-                        self.buff.push(GVMe::STORE(self.last_mem_slot - 1));
-                        right_loc.loc = self.last_mem_slot - 1;
-                    }
-
-                    let left_loc = self.get_var_location(left);
-                    if left_loc.is_pointer {
-                        self.buff.push(GVMe::LOADI(left_loc.loc));
-                    } else {
-                        self.buff.push(GVMe::LOAD(left_loc.loc));
-                    }
-
-                    if right_loc.is_pointer {
-                        self.buff.push(GVMe::SUBI(right_loc.loc));
-                    } else {
-                        self.buff.push(GVMe::SUB(right_loc.loc));
-                    }
-
-                    self.compile_store_acc_to_loc(&dst_loc);
-                    Some(())
-                }
-            }
-            IR::Mul { dest, left, right } => {
-                if let IrOperand::Constant(const_right) = right {
-                    if *const_right == 2 {
-                        let left_loc = self.get_var_location_not_acc(left, self.last_mem_slot);
-                        let dest_loc = self.get_var_location_not_acc(dest, self.last_mem_slot - 1);
+                IR::Add { dest, left, right } => {
+                    if let (Some(dest_loc), Some(left_loc), Some(right_loc)) = (
+                        self.get_var_location_no_extra_cmds(dest),
+                        self.get_var_location_no_extra_cmds(left),
+                        self.get_var_location_no_extra_cmds(right),
+                    ) {
                         self.compile_load_loc_to_acc(&left_loc);
-                        self.buff.push(GVMe::ADD(0));
+                        if right_loc.is_pointer {
+                            self.buff.push(GVMe::ADDI(right_loc.loc));
+                        } else {
+                            self.buff.push(GVMe::ADD(right_loc.loc));
+                        }
                         self.compile_store_acc_to_loc(&dest_loc);
-                        return Some(());
+                    } else {
+                        let mut dst_loc = self.get_var_location(dest);
+                        if dst_loc.loc == 0 {
+                            self.buff.push(GVMe::STORE(self.last_mem_slot));
+                            dst_loc.loc = self.last_mem_slot;
+                        }
+
+                        let mut left_loc = self.get_var_location(left);
+                        if left_loc.loc == 0 {
+                            self.buff.push(GVMe::STORE(self.last_mem_slot - 1));
+                            left_loc.loc = self.last_mem_slot - 1;
+                        }
+
+                        let right_loc = self.get_var_location(right);
+                        if right_loc.is_pointer {
+                            self.buff.push(GVMe::LOADI(right_loc.loc));
+                        } else {
+                            self.buff.push(GVMe::LOAD(right_loc.loc));
+                        }
+
+                        if left_loc.is_pointer {
+                            self.buff.push(GVMe::ADDI(left_loc.loc));
+                        } else {
+                            self.buff.push(GVMe::ADD(left_loc.loc));
+                        }
+
+                        self.compile_store_acc_to_loc(&dst_loc);
                     }
                 }
-
-                if let IrOperand::Constant(const_left) = left {
-                    if *const_left == 2 {
-                        let right_loc = self.get_var_location_not_acc(right, self.last_mem_slot);
-                        let dest_loc = self.get_var_location_not_acc(dest, self.last_mem_slot - 1);
-                        self.compile_load_loc_to_acc(&right_loc);
-                        self.buff.push(GVMe::ADD(0));
-                        self.compile_store_acc_to_loc(&dest_loc);
-                        return Some(());
-                    }
-                }
-
-                self.do_compile_mul = true;
-                self.mul_call_count += 1;
-
-                let left_arg_loc = self.proc_info.get(BUILTINS::MUL.to_name()).unwrap().args[0];
-                let left_loc = self.get_var_location(left);
-                self.compile_load_loc_to_acc(&left_loc);
-                self.buff.push(GVMe::STORE(left_arg_loc));
-
-                let right_arg_loc = self.proc_info.get(BUILTINS::MUL.to_name()).unwrap().args[1];
-                let right_loc = self.get_var_location(right);
-                self.compile_load_loc_to_acc(&right_loc);
-                self.buff.push(GVMe::STORE(right_arg_loc));
-
-                self.buff.push(GVMe::call {
-                    name: BUILTINS::MUL.to_name().to_owned(),
-                });
-
-                self.last_mem_slot -= 1;
-                let mut dest_loc = self.get_var_location(dest);
-                if dest_loc.loc == 0 {
-                    dest_loc.loc = self.last_mem_slot + 1;
-                    self.buff.push(GVMe::STORE(self.last_mem_slot + 1));
-                }
-
-                self.compile_load_loc_to_acc(&VarLoc {
-                    loc: self.proc_info.get(BUILTINS::MUL.to_name()).unwrap().args[2],
-                    is_pointer: false,
-                });
-                self.compile_store_acc_to_loc(&dest_loc);
-
-                self.last_mem_slot += 1;
-                Some(())
-            }
-            IR::Div { dest, left, right } => {
-                if let IrOperand::Constant(const_right) = right {
-                    if *const_right == 2 {
-                        let left_loc = self.get_var_location_not_acc(left, self.last_mem_slot);
-                        let dest_loc = self.get_var_location_not_acc(dest, self.last_mem_slot - 1);
+                IR::Sub { dest, left, right } => {
+                    if let (Some(dest_loc), Some(left_loc), Some(right_loc)) = (
+                        self.get_var_location_no_extra_cmds(dest),
+                        self.get_var_location_no_extra_cmds(left),
+                        self.get_var_location_no_extra_cmds(right),
+                    ) {
                         self.compile_load_loc_to_acc(&left_loc);
-                        self.buff.push(GVMe::HALF);
+                        if right_loc.is_pointer {
+                            self.buff.push(GVMe::SUBI(right_loc.loc));
+                        } else {
+                            self.buff.push(GVMe::SUB(right_loc.loc));
+                        }
                         self.compile_store_acc_to_loc(&dest_loc);
-                        return Some(());
+                    } else {
+                        let mut dst_loc = self.get_var_location(dest);
+                        if dst_loc.loc == 0 {
+                            self.buff.push(GVMe::STORE(self.last_mem_slot));
+                            dst_loc.loc = self.last_mem_slot;
+                        }
+
+                        let mut right_loc = self.get_var_location(right);
+                        if right_loc.loc == 0 {
+                            self.buff.push(GVMe::STORE(self.last_mem_slot - 1));
+                            right_loc.loc = self.last_mem_slot - 1;
+                        }
+
+                        let left_loc = self.get_var_location(left);
+                        if left_loc.is_pointer {
+                            self.buff.push(GVMe::LOADI(left_loc.loc));
+                        } else {
+                            self.buff.push(GVMe::LOAD(left_loc.loc));
+                        }
+
+                        if right_loc.is_pointer {
+                            self.buff.push(GVMe::SUBI(right_loc.loc));
+                        } else {
+                            self.buff.push(GVMe::SUB(right_loc.loc));
+                        }
+
+                        self.compile_store_acc_to_loc(&dst_loc);
                     }
                 }
-
-                self.do_compile_mod_div = true;
-                self.mod_div_call_count += 1;
-
-                let left_arg_loc = self
-                    .proc_info
-                    .get(BUILTINS::DIV_MOD.to_name())
-                    .unwrap()
-                    .args[0];
-                let left_loc = self.get_var_location(left);
-                self.compile_load_loc_to_acc(&left_loc);
-                self.buff.push(GVMe::STORE(left_arg_loc));
-
-                let right_arg_loc = self
-                    .proc_info
-                    .get(BUILTINS::DIV_MOD.to_name())
-                    .unwrap()
-                    .args[1];
-                let right_loc = self.get_var_location(right);
-                self.compile_load_loc_to_acc(&right_loc);
-                self.buff.push(GVMe::STORE(right_arg_loc));
-
-                self.buff.push(GVMe::call {
-                    name: BUILTINS::DIV_MOD.to_name().to_owned(),
-                });
-
-                self.last_mem_slot -= 1;
-                let mut dest_loc = self.get_var_location(dest);
-                if dest_loc.loc == 0 {
-                    dest_loc.loc = self.last_mem_slot + 1;
-                    self.buff.push(GVMe::STORE(self.last_mem_slot + 1));
-                }
-
-                self.compile_load_loc_to_acc(&VarLoc {
-                    loc: self
-                        .proc_info
-                        .get(BUILTINS::DIV_MOD.to_name())
-                        .unwrap()
-                        .args[2],
-                    is_pointer: false,
-                });
-                self.compile_store_acc_to_loc(&dest_loc);
-
-                self.last_mem_slot += 1;
-                Some(())
-            }
-            IR::Mod { dest, left, right } => {
-                self.do_compile_mod_div = true;
-                self.mod_div_call_count += 1;
-
-                let left_arg_loc = self
-                    .proc_info
-                    .get(BUILTINS::DIV_MOD.to_name())
-                    .unwrap()
-                    .args[0];
-                let left_loc = self.get_var_location(left);
-                self.compile_load_loc_to_acc(&left_loc);
-                self.buff.push(GVMe::STORE(left_arg_loc));
-
-                let right_arg_loc = self
-                    .proc_info
-                    .get(BUILTINS::DIV_MOD.to_name())
-                    .unwrap()
-                    .args[1];
-                let right_loc = self.get_var_location(right);
-                self.compile_load_loc_to_acc(&right_loc);
-                self.buff.push(GVMe::STORE(right_arg_loc));
-
-                self.buff.push(GVMe::call {
-                    name: BUILTINS::DIV_MOD.to_name().to_owned(),
-                });
-
-                self.last_mem_slot -= 1;
-                let mut dest_loc = self.get_var_location(dest);
-                if dest_loc.loc == 0 {
-                    dest_loc.loc = self.last_mem_slot + 1;
-                    self.buff.push(GVMe::STORE(self.last_mem_slot + 1));
-                }
-
-                self.compile_load_loc_to_acc(&VarLoc {
-                    loc: self
-                        .proc_info
-                        .get(BUILTINS::DIV_MOD.to_name())
-                        .unwrap()
-                        .args[3],
-                    is_pointer: false,
-                });
-                self.compile_store_acc_to_loc(&dest_loc);
-
-                self.last_mem_slot += 1;
-                Some(())
-            }
-            IR::Label(str_lbl) => {
-                let lbl = self.get_label(&str_lbl);
-                self.buff.push(GVMe::lbl {
-                    idx: lbl,
-                    name: str_lbl.clone(),
-                });
-                Some(())
-            }
-            IR::Jump(str_lbl) => {
-                let lbl = self.get_label(&str_lbl);
-                self.buff.push(GVMe::lbl_jump(lbl));
-                Some(())
-            }
-            IR::JZero { left, right, label } => {
-                self.compile_comparison(left, right);
-                self.buff.push(GVMe::jz(self.get_label(&label)));
-                Some(())
-            }
-            IR::JNotZero { left, right, label } => {
-                self.compile_comparison(left, right);
-                self.buff.push(GVMe::jnz(self.get_label(label)));
-                Some(())
-            }
-            IR::JPositive { left, right, label } => {
-                self.compile_comparison(left, right);
-                self.buff.push(GVMe::jpos(self.get_label(label)));
-                Some(())
-            }
-            IR::JNegative { left, right, label } => {
-                self.compile_comparison(left, right);
-                self.buff.push(GVMe::jneg(self.get_label(label)));
-                Some(())
-            }
-            IR::JPositiveOrZero { left, right, label } => {
-                self.compile_comparison(left, right);
-                self.buff.push(GVMe::jposz(self.get_label(label)));
-                Some(())
-            }
-            IR::JNegativeOrZero { left, right, label } => {
-                self.compile_comparison(left, right);
-                self.buff.push(GVMe::jnegz(self.get_label(label)));
-                Some(())
-            }
-            IR::Call {
-                procedure,
-                arguments,
-            } => {
-                let proc_info = self.proc_info.get(procedure).unwrap().clone();
-                let ir_proc = *self.ir_proc_info.get(procedure).unwrap();
-                let do_inline = proc_info.do_inline;
-                let proc_args = proc_info.args.clone();
-
-                if do_inline {
-                    self.do_inline(&proc_info, arguments, ir_proc);
-
-                    return Some(());
-                } else {
-                    self.proc_to_compile.insert(procedure.to_owned());
-                    for (i, arg) in arguments.iter().enumerate() {
-                        let arg_name = if let IrOperand::Variable(n) = arg {
-                            n
-                        } else {
-                            unreachable!();
-                        };
-                        let arg_mem_loc = self.memory.get_base_loc(&arg_name, &self.current_scope);
-
-                        let arg_mem_loci64 = arg_mem_loc.memory_address as i64;
-
-                        let target_mem_loc = proc_args.get(i).unwrap().clone();
-
-                        if arg_mem_loc.is_pointer {
-                            self.buff.push(GVMe::LOAD(arg_mem_loc.memory_address));
-                            self.buff.push(GVMe::STORE(target_mem_loc));
-                        } else {
-                            self.const_in_acc(&arg_mem_loci64);
-                            self.buff.push(GVMe::STORE(target_mem_loc));
+                IR::Mul { dest, left, right } => {
+                    if let IrOperand::Constant(const_right) = right {
+                        if *const_right == 2 {
+                            let left_loc = self.get_var_location_not_acc(left, self.last_mem_slot);
+                            let dest_loc =
+                                self.get_var_location_not_acc(dest, self.last_mem_slot - 1);
+                            self.compile_load_loc_to_acc(&left_loc);
+                            self.buff.push(GVMe::ADD(0));
+                            self.compile_store_acc_to_loc(&dest_loc);
+                            continue;
                         }
                     }
 
+                    if let IrOperand::Constant(const_left) = left {
+                        if *const_left == 2 {
+                            let right_loc =
+                                self.get_var_location_not_acc(right, self.last_mem_slot);
+                            let dest_loc =
+                                self.get_var_location_not_acc(dest, self.last_mem_slot - 1);
+                            self.compile_load_loc_to_acc(&right_loc);
+                            self.buff.push(GVMe::ADD(0));
+                            self.compile_store_acc_to_loc(&dest_loc);
+                            continue;
+                        }
+                    }
+
+                    self.do_compile_mul = true;
+                    self.mul_call_count += 1;
+
+                    let left_arg_loc = self.proc_info.get(BUILTINS::MUL.to_name()).unwrap().args[0];
+                    let left_loc = self.get_var_location(left);
+                    self.compile_load_loc_to_acc(&left_loc);
+                    self.buff.push(GVMe::STORE(left_arg_loc));
+
+                    let right_arg_loc =
+                        self.proc_info.get(BUILTINS::MUL.to_name()).unwrap().args[1];
+                    let right_loc = self.get_var_location(right);
+                    self.compile_load_loc_to_acc(&right_loc);
+                    self.buff.push(GVMe::STORE(right_arg_loc));
+
                     self.buff.push(GVMe::call {
-                        name: procedure.clone(),
+                        name: BUILTINS::MUL.to_name().to_owned(),
+                    });
+
+                    self.last_mem_slot -= 1;
+                    let mut dest_loc = self.get_var_location(dest);
+                    if dest_loc.loc == 0 {
+                        dest_loc.loc = self.last_mem_slot + 1;
+                        self.buff.push(GVMe::STORE(self.last_mem_slot + 1));
+                    }
+
+                    self.compile_load_loc_to_acc(&VarLoc {
+                        loc: self.proc_info.get(BUILTINS::MUL.to_name()).unwrap().args[2],
+                        is_pointer: false,
+                    });
+                    self.compile_store_acc_to_loc(&dest_loc);
+
+                    self.last_mem_slot += 1;
+                }
+                IR::Div { dest, left, right } => {
+                    if let IrOperand::Constant(const_right) = right {
+                        if *const_right == 2 {
+                            let left_loc = self.get_var_location_not_acc(left, self.last_mem_slot);
+                            let dest_loc =
+                                self.get_var_location_not_acc(dest, self.last_mem_slot - 1);
+                            self.compile_load_loc_to_acc(&left_loc);
+                            self.buff.push(GVMe::HALF);
+                            self.compile_store_acc_to_loc(&dest_loc);
+                            continue;
+                        }
+                    }
+
+                    self.do_compile_mod_div = true;
+                    self.mod_div_call_count += 1;
+
+                    let left_arg_loc = self
+                        .proc_info
+                        .get(BUILTINS::DIV_MOD.to_name())
+                        .unwrap()
+                        .args[0];
+                    let left_loc = self.get_var_location(left);
+                    self.compile_load_loc_to_acc(&left_loc);
+                    self.buff.push(GVMe::STORE(left_arg_loc));
+
+                    let right_arg_loc = self
+                        .proc_info
+                        .get(BUILTINS::DIV_MOD.to_name())
+                        .unwrap()
+                        .args[1];
+                    let right_loc = self.get_var_location(right);
+                    self.compile_load_loc_to_acc(&right_loc);
+                    self.buff.push(GVMe::STORE(right_arg_loc));
+
+                    self.buff.push(GVMe::call {
+                        name: BUILTINS::DIV_MOD.to_name().to_owned(),
+                    });
+
+                    self.last_mem_slot -= 1;
+                    let mut dest_loc = self.get_var_location(dest);
+                    if dest_loc.loc == 0 {
+                        dest_loc.loc = self.last_mem_slot + 1;
+                        self.buff.push(GVMe::STORE(self.last_mem_slot + 1));
+                    }
+
+                    self.compile_load_loc_to_acc(&VarLoc {
+                        loc: self
+                            .proc_info
+                            .get(BUILTINS::DIV_MOD.to_name())
+                            .unwrap()
+                            .args[2],
+                        is_pointer: false,
+                    });
+                    self.compile_store_acc_to_loc(&dest_loc);
+
+                    self.last_mem_slot += 1;
+                }
+                IR::Mod { dest, left, right } => {
+                    // check two back an two forwards, if there is no div we call mod instead of div_mod
+                    let mut call_mod = true;
+                    for j in i - 2..=i + 2 {
+                        let _op = commands.get(j).unwrap_or(&IR::Return);
+                        if let IR::Div {
+                            dest: _,
+                            left: _,
+                            right: _,
+                        } = _op
+                        {
+                            call_mod = false;
+                        }
+                    }
+                    if call_mod {
+                        self.do_compile_mod = true;
+
+                        let left_arg_loc = self
+                            .proc_info
+                            .get(BUILTINS::MOD.to_name())
+                            .unwrap()
+                            .args[0];
+                        let left_loc = self.get_var_location(left);
+                        self.compile_load_loc_to_acc(&left_loc);
+                        self.buff.push(GVMe::STORE(left_arg_loc));
+
+                        let right_arg_loc = self
+                            .proc_info
+                            .get(BUILTINS::MOD.to_name())
+                            .unwrap()
+                            .args[1];
+                        let right_loc = self.get_var_location(right);
+                        self.compile_load_loc_to_acc(&right_loc);
+                        self.buff.push(GVMe::STORE(right_arg_loc));
+
+                        self.buff.push(GVMe::call {
+                            name: BUILTINS::MOD.to_name().to_owned(),
+                        });
+
+                        self.last_mem_slot -= 1;
+                        let mut dest_loc = self.get_var_location(dest);
+                        if dest_loc.loc == 0 {
+                            dest_loc.loc = self.last_mem_slot + 1;
+                            self.buff.push(GVMe::STORE(self.last_mem_slot + 1));
+                        }
+
+                        self.compile_load_loc_to_acc(&VarLoc {
+                            loc: self
+                                .proc_info
+                                .get(BUILTINS::MOD.to_name())
+                                .unwrap()
+                                .args[2],
+                            is_pointer: false,
+                        });
+                        self.compile_store_acc_to_loc(&dest_loc);
+
+                        self.last_mem_slot += 1;
+                    } else {
+                        // call div_mod
+                        self.do_compile_mod_div = true;
+                        self.mod_div_call_count += 1;
+
+                        let left_arg_loc = self
+                            .proc_info
+                            .get(BUILTINS::DIV_MOD.to_name())
+                            .unwrap()
+                            .args[0];
+                        let left_loc = self.get_var_location(left);
+                        self.compile_load_loc_to_acc(&left_loc);
+                        self.buff.push(GVMe::STORE(left_arg_loc));
+
+                        let right_arg_loc = self
+                            .proc_info
+                            .get(BUILTINS::DIV_MOD.to_name())
+                            .unwrap()
+                            .args[1];
+                        let right_loc = self.get_var_location(right);
+                        self.compile_load_loc_to_acc(&right_loc);
+                        self.buff.push(GVMe::STORE(right_arg_loc));
+
+                        self.buff.push(GVMe::call {
+                            name: BUILTINS::DIV_MOD.to_name().to_owned(),
+                        });
+
+                        self.last_mem_slot -= 1;
+                        let mut dest_loc = self.get_var_location(dest);
+                        if dest_loc.loc == 0 {
+                            dest_loc.loc = self.last_mem_slot + 1;
+                            self.buff.push(GVMe::STORE(self.last_mem_slot + 1));
+                        }
+
+                        self.compile_load_loc_to_acc(&VarLoc {
+                            loc: self
+                                .proc_info
+                                .get(BUILTINS::DIV_MOD.to_name())
+                                .unwrap()
+                                .args[3],
+                            is_pointer: false,
+                        });
+                        self.compile_store_acc_to_loc(&dest_loc);
+
+                        self.last_mem_slot += 1;
+                    }
+                }
+                IR::Label(str_lbl) => {
+                    let lbl = self.get_label(&str_lbl);
+                    self.buff.push(GVMe::lbl {
+                        idx: lbl,
+                        name: str_lbl.clone(),
                     });
                 }
+                IR::Jump(str_lbl) => {
+                    let lbl = self.get_label(&str_lbl);
+                    self.buff.push(GVMe::lbl_jump(lbl));
+                }
+                IR::JZero { left, right, label } => {
+                    self.compile_comparison(left, right);
+                    self.buff.push(GVMe::jz(self.get_label(&label)));
+                }
+                IR::JNotZero { left, right, label } => {
+                    self.compile_comparison(left, right);
+                    self.buff.push(GVMe::jnz(self.get_label(label)));
+                }
+                IR::JPositive { left, right, label } => {
+                    self.compile_comparison(left, right);
+                    self.buff.push(GVMe::jpos(self.get_label(label)));
+                }
+                IR::JNegative { left, right, label } => {
+                    self.compile_comparison(left, right);
+                    self.buff.push(GVMe::jneg(self.get_label(label)));
+                }
+                IR::JPositiveOrZero { left, right, label } => {
+                    self.compile_comparison(left, right);
+                    self.buff.push(GVMe::jposz(self.get_label(label)));
+                }
+                IR::JNegativeOrZero { left, right, label } => {
+                    self.compile_comparison(left, right);
+                    self.buff.push(GVMe::jnegz(self.get_label(label)));
+                }
+                IR::Call {
+                    procedure,
+                    arguments,
+                } => {
+                    let proc_info = self.proc_info.get(procedure).unwrap().clone();
+                    let ir_proc = *self.ir_proc_info.get(procedure).unwrap();
+                    let do_inline = proc_info.do_inline;
+                    let proc_args = proc_info.args.clone();
 
-                Some(())
-            }
-            IR::Return => Some(()),
-            IR::Read(ir_operand) => {
-                let mut var_loc = self.get_var_location(ir_operand);
-                if var_loc.loc == 0 {
-                    var_loc.loc = self.last_mem_slot;
-                    self.buff.push(GVMe::STORE(self.last_mem_slot));
+                    if do_inline {
+                        self.do_inline(&proc_info, arguments, ir_proc);
+                    } else {
+                        self.proc_to_compile.insert(procedure.to_owned());
+                        for (i, arg) in arguments.iter().enumerate() {
+                            let arg_name = if let IrOperand::Variable(n) = arg {
+                                n
+                            } else {
+                                unreachable!();
+                            };
+                            let arg_mem_loc =
+                                self.memory.get_base_loc(&arg_name, &self.current_scope);
+
+                            let arg_mem_loci64 = arg_mem_loc.memory_address as i64;
+
+                            let target_mem_loc = proc_args.get(i).unwrap().clone();
+
+                            if arg_mem_loc.is_pointer {
+                                self.buff.push(GVMe::LOAD(arg_mem_loc.memory_address));
+                                self.buff.push(GVMe::STORE(target_mem_loc));
+                            } else {
+                                self.const_in_acc(&arg_mem_loci64);
+                                self.buff.push(GVMe::STORE(target_mem_loc));
+                            }
+                        }
+
+                        self.buff.push(GVMe::call {
+                            name: procedure.clone(),
+                        });
+                    }
                 }
-                if !var_loc.is_pointer {
-                    self.buff.push(GVMe::GET(var_loc.loc));
-                } else {
-                    self.buff.push(GVMe::GET(0));
-                    self.buff.push(GVMe::STOREI(var_loc.loc));
+                IR::Return => {}
+                IR::Read(ir_operand) => {
+                    let mut var_loc = self.get_var_location(ir_operand);
+                    if var_loc.loc == 0 {
+                        var_loc.loc = self.last_mem_slot;
+                        self.buff.push(GVMe::STORE(self.last_mem_slot));
+                    }
+                    if !var_loc.is_pointer {
+                        self.buff.push(GVMe::GET(var_loc.loc));
+                    } else {
+                        self.buff.push(GVMe::GET(0));
+                        self.buff.push(GVMe::STOREI(var_loc.loc));
+                    }
                 }
-                Some(())
-            }
-            IR::Write(ir_operand) => {
-                let var_loc = self.get_var_location(ir_operand);
-                if !var_loc.is_pointer {
-                    self.buff.push(GVMe::PUT(var_loc.loc));
-                } else {
-                    self.buff.push(GVMe::LOADI(var_loc.loc));
-                    self.buff.push(GVMe::PUT(0));
+                IR::Write(ir_operand) => {
+                    let var_loc = self.get_var_location(ir_operand);
+                    if !var_loc.is_pointer {
+                        self.buff.push(GVMe::PUT(var_loc.loc));
+                    } else {
+                        self.buff.push(GVMe::LOADI(var_loc.loc));
+                        self.buff.push(GVMe::PUT(0));
+                    }
                 }
-                Some(())
-            }
-            IR::Comment(cm) => {
-                self.buff.push(GVMe::comment { cm: cm.to_string() });
-                Some(())
+                IR::Comment(cm) => {
+                    self.buff.push(GVMe::comment { cm: cm.to_string() });
+                }
             }
         }
     }
@@ -849,7 +881,7 @@ impl<'a> GVMeCompileContext<'a> {
         panic!("label was {}", str_lbl);
     }
 
-    fn const_in_acc(&mut self, val: &i64) {
+    pub fn const_in_acc(&mut self, val: &i64) {
         let loc = self.memory.get_const_loc_or_aloc(val);
         self.buff.push(GVMe::LOAD(loc.memory_address));
     }
@@ -890,9 +922,9 @@ impl<'a> GVMeCompileContext<'a> {
         let renamed_commands = name_transformer.ir_transform(&ir_proc.cmds);
 
         let mut label_map: HashMap<LabelIdx, String> = HashMap::new();
-
-        for cm in renamed_commands.iter() {
-            let new_cm: IR = match cm {
+        let relabeled_commands = renamed_commands
+            .iter()
+            .map(|cm| match cm {
                 IR::Label(label) => IR::Label(self.get_or_create_label(&label, &mut label_map)),
                 IR::Jump(label) => IR::Jump(self.get_or_create_label(&label, &mut label_map)),
                 IR::JZero { left, right, label } => IR::JZero {
@@ -926,9 +958,9 @@ impl<'a> GVMeCompileContext<'a> {
                     label: self.get_or_create_label(&label, &mut label_map),
                 },
                 _ => cm.clone(),
-            };
-            self.compile_op(&new_cm);
-        }
+            })
+            .collect();
+        self.compile_op(&relabeled_commands);
     }
 
     fn get_or_create_label(
@@ -948,605 +980,7 @@ impl<'a> GVMeCompileContext<'a> {
         }
     }
 
-    /// BUILTIN PROCEDURES !!!!
-    fn generate_mul_procedure_stub(&mut self) -> GVMeProc {
-        let proc_name = BUILTINS::MUL.to_name();
-
-        let mut args = vec![];
-        args.push(
-            self.memory
-                .allocate_builtin_arg("arg1", &proc_name)
-                .memory_address,
-        );
-        args.push(
-            self.memory
-                .allocate_builtin_arg("arg2", &proc_name)
-                .memory_address,
-        );
-        args.push(
-            self.memory
-                .allocate_builtin_arg("rtn", &proc_name)
-                .memory_address,
-        );
-
-        self.memory.allocate_builtin_arg("last_arg1", &proc_name);
-        self.memory.allocate_builtin_arg("last_arg2", &proc_name);
-
-        self.next_available_label += 1;
-        GVMeProc {
-            label: LabelIdx(self.next_available_label - 1),
-            return_address: self.memory.allocate_proc_return(&proc_name),
-            args: args,
-            do_inline: false,
-            arg_names: vec![
-                "arg1".to_owned(),
-                "arg2".to_owned(),
-                "rtn".to_owned(),
-                "last_arg1".to_owned(),
-                "last_arg2".to_owned(),
-            ],
-        }
-    }
-
-    fn generate_div_mod_procedure_stub(&mut self) -> GVMeProc {
-        let proc_name = BUILTINS::DIV_MOD.to_name();
-
-        let mut args = vec![];
-        args.push(
-            self.memory
-                .allocate_builtin_arg("arg1", &proc_name)
-                .memory_address,
-        );
-        args.push(
-            self.memory
-                .allocate_builtin_arg("arg2", &proc_name)
-                .memory_address,
-        );
-        args.push(
-            self.memory
-                .allocate_builtin_arg("dividend", &proc_name)
-                .memory_address,
-        );
-        args.push(
-            self.memory
-                .allocate_builtin_arg("divisor", &proc_name)
-                .memory_address,
-        );
-
-        args.push(
-            self.memory
-                .allocate_builtin_arg("last_arg1", &proc_name)
-                .memory_address,
-        );
-        args.push(
-            self.memory
-                .allocate_builtin_arg("last_arg2", &proc_name)
-                .memory_address,
-        );
-
-        self.next_available_label += 1;
-
-        GVMeProc {
-            label: LabelIdx(self.next_available_label - 1),
-            return_address: self.memory.allocate_proc_return(&proc_name),
-            args: args,
-            do_inline: false,
-            arg_names: vec![
-                "arg1".to_owned(),
-                "arg2".to_owned(),
-                "dividend".to_owned(),
-                "divisor".to_owned(),
-                "last_arg1".to_owned(),
-                "last_arg2".to_owned(),
-            ],
-        }
-    }
-
-    fn compile_mul_builtin(&mut self) {
-        let proc_info = self
-            .proc_info
-            .get(BUILTINS::MUL.to_name())
-            .cloned()
-            .unwrap();
-        self.buff.push(GVMe::lbl {
-            idx: proc_info.label.clone(),
-            name: BUILTINS::MUL.to_name().to_owned(),
-        });
-        let arg1 = proc_info.args[0];
-        let arg2 = proc_info.args[1];
-        let res_rtn = proc_info.args[2];
-
-        let last_arg1 = self
-            .memory
-            .get_base_loc("last_arg1", &BUILTINS::MUL.to_name())
-            .memory_address;
-
-        let last_arg2 = self
-            .memory
-            .get_base_loc("last_arg2", &BUILTINS::MUL.to_name())
-            .memory_address;
-
-        let zero = 0;
-        let one = 1;
-        let m_one = -1;
-
-        let loop_end_lbl = self.next_label();
-        let loop_start_lbl = self.next_label();
-
-        let skip_add = self.next_label();
-
-        let sign_flag = self
-            .memory
-            .allocate_var("sign_flag", BUILTINS::MUL.to_name())
-            .memory_address;
-        let arg1_op = self
-            .memory
-            .allocate_var("arg1_op", BUILTINS::MUL.to_name())
-            .memory_address;
-        let arg2_op = self
-            .memory
-            .allocate_var("arg2_op", BUILTINS::MUL.to_name())
-            .memory_address;
-        let res = self
-            .memory
-            .allocate_var("res", BUILTINS::MUL.to_name())
-            .memory_address;
-        let arg_1_pos = self.next_label();
-        let arg_2_pos = self.next_label();
-
-        self.const_in_acc(&one);
-        self.buff.push(GVMe::STORE(sign_flag));
-
-        self.buff.push(GVMe::LOAD(arg1));
-        self.buff.push(GVMe::jpos(arg_1_pos.clone()));
-
-        self.const_in_acc(&m_one);
-        self.buff.push(GVMe::STORE(sign_flag));
-        self.const_in_acc(&zero);
-        self.buff.push(GVMe::SUB(arg1));
-        self.buff.push(GVMe::STORE(arg1));
-
-        self.buff.push(GVMe::lbl {
-            idx: arg_1_pos,
-            name: format!(""),
-        });
-
-        self.buff.push(GVMe::LOAD(arg2));
-        self.buff.push(GVMe::jpos(arg_2_pos.clone()));
-
-        self.const_in_acc(&zero);
-
-        self.buff.push(GVMe::SUB(sign_flag));
-        self.buff.push(GVMe::STORE(sign_flag));
-        self.const_in_acc(&zero);
-
-        self.buff.push(GVMe::SUB(arg2));
-        self.buff.push(GVMe::STORE(arg2));
-
-        self.buff.push(GVMe::lbl {
-            idx: arg_2_pos,
-            name: format!(""),
-        });
-        //TODO VVVVVV
-        // SWAP ARGS SO THE SMALLER ONE IS FIRST
-        let tmp = self.last_mem_slot - 2;
-        let dont_swap = self.next_label();
-        self.buff.push(GVMe::SUB(arg1));
-        self.buff.push(GVMe::jposz(dont_swap));
-        self.buff.push(GVMe::LOAD(arg1));
-        self.buff.push(GVMe::STORE(tmp));
-        self.buff.push(GVMe::LOAD(arg2));
-        self.buff.push(GVMe::STORE(arg1));
-        self.buff.push(GVMe::LOAD(tmp));
-        self.buff.push(GVMe::STORE(arg2));
-        self.buff.push(GVMe::lbl {
-            idx: dont_swap,
-            name: format!(""),
-        });
-        if self.mul_call_count > 3 {
-            // CHECK IF LAST ARGS ARE THE SAME
-            let _skip = self.next_label();
-            self.buff.push(GVMe::LOAD(arg2));
-            self.buff.push(GVMe::SUB(last_arg2));
-            self.buff.push(GVMe::jnz(_skip));
-            self.buff.push(GVMe::LOAD(arg1));
-            self.buff.push(GVMe::SUB(last_arg1));
-            self.buff.push(GVMe::jz(loop_end_lbl));
-
-            self.buff.push(GVMe::lbl {
-                idx: _skip,
-                name: "".to_owned(),
-            });
-        }
-
-        // STORE CURRENT ARGS TO LAST ARGS
-
-        self.const_in_acc(&zero);
-        self.buff.push(GVMe::STORE(res));
-        self.buff.push(GVMe::LOAD(arg2));
-        if self.mul_call_count > 3 {
-            self.buff.push(GVMe::STORE(last_arg2));
-        }
-        self.buff.push(GVMe::STORE(arg2_op));
-        self.buff.push(GVMe::LOAD(arg1));
-
-        if self.mul_call_count > 3 {
-            self.buff.push(GVMe::STORE(last_arg1));
-        }
-        self.buff.push(GVMe::STORE(arg1_op));
-        // CARRY ON
-        self.buff.push(GVMe::LOAD(arg1_op));
-        self.buff.push(GVMe::lbl {
-            idx: loop_start_lbl.clone(),
-            name: format!(""),
-        });
-        self.buff.push(GVMe::jz(loop_end_lbl.clone()));
-
-        self.buff.push(GVMe::HALF);
-        self.buff.push(GVMe::ADD(0));
-        self.buff.push(GVMe::SUB(arg1_op));
-
-        self.buff.push(GVMe::jz(skip_add.clone()));
-        self.buff.push(GVMe::LOAD(arg1_op));
-        self.buff.push(GVMe::LOAD(res));
-        self.buff.push(GVMe::ADD(arg2_op));
-        self.buff.push(GVMe::STORE(res));
-        self.buff.push(GVMe::lbl {
-            idx: skip_add,
-            name: format!(""),
-        });
-
-        self.buff.push(GVMe::LOAD(arg2_op));
-        self.buff.push(GVMe::ADD(arg2_op));
-        self.buff.push(GVMe::STORE(arg2_op));
-
-        self.buff.push(GVMe::LOAD(arg1_op));
-        self.buff.push(GVMe::HALF);
-        self.buff.push(GVMe::STORE(arg1_op));
-
-        self.buff.push(GVMe::lbl_jump(loop_start_lbl));
-        self.buff.push(GVMe::lbl {
-            idx: loop_end_lbl,
-            name: format!(""),
-        });
-        let is_pos = self.next_label();
-
-        let skip = self.next_label();
-
-        self.buff.push(GVMe::LOAD(sign_flag));
-        self.buff.push(GVMe::jpos(is_pos.clone()));
-
-        self.const_in_acc(&zero);
-        self.buff.push(GVMe::SUB(res));
-        self.buff.push(GVMe::lbl_jump(skip.clone()));
-
-        self.buff.push(GVMe::lbl {
-            idx: is_pos,
-            name: format!(""),
-        });
-        self.buff.push(GVMe::LOAD(res));
-        self.buff.push(GVMe::lbl {
-            idx: skip,
-            name: format!(""),
-        });
-        self.buff.push(GVMe::STORE(res_rtn));
-
-        self.buff.push(GVMe::RTRN(proc_info.return_address));
-    }
-
-    fn compile_div_mod_builtin(&mut self) {
-        let proc_info = self
-            .proc_info
-            .get(BUILTINS::DIV_MOD.to_name())
-            .cloned()
-            .unwrap();
-        self.buff.push(GVMe::lbl {
-            idx: proc_info.label.clone(),
-            name: BUILTINS::DIV_MOD.to_name().to_owned(),
-        });
-
-        let arg1 = proc_info.args[0];
-        let arg2 = proc_info.args[1];
-        let div_res_rtn = proc_info.args[2];
-        let mod_res_rtn = proc_info.args[3];
-        let last_arg1 = proc_info.args[4];
-        let last_arg2 = proc_info.args[5];
-
-        let zero = 0;
-        let one = 1;
-        let m_one = -1;
-        let arg1_positive = self
-            .memory
-            .allocate_var("arg1_positive", BUILTINS::DIV_MOD.to_name())
-            .memory_address;
-        let arg2_positive = self
-            .memory
-            .allocate_var("arg2_positive", BUILTINS::DIV_MOD.to_name())
-            .memory_address;
-
-        let power_of_two = self
-            .memory
-            .allocate_var("power_of_two", BUILTINS::DIV_MOD.to_name())
-            .memory_address;
-
-        let arg2_cpy = self
-            .memory
-            .allocate_var("arg2_cpy", BUILTINS::DIV_MOD.to_name())
-            .memory_address;
-
-        let div_res = self
-            .memory
-            .allocate_var("div_res", BUILTINS::DIV_MOD.to_name())
-            .memory_address;
-        let mod_res = self
-            .memory
-            .allocate_var("mod_res", BUILTINS::DIV_MOD.to_name())
-            .memory_address;
-        let sign_flag = self
-            .memory
-            .allocate_var("sign_flag", BUILTINS::DIV_MOD.to_name())
-            .memory_address;
-
-        let arg_1_pos = self.next_label();
-        let arg_2_pos = self.next_label();
-        let arg_2_zero = self.next_label();
-        // if b == 0
-        self.buff.push(GVMe::LOAD(arg2));
-        self.buff.push(GVMe::jnz(arg_2_zero.clone()));
-        self.const_in_acc(&zero);
-        self.buff.push(GVMe::STORE(div_res));
-        self.buff.push(GVMe::STORE(mod_res));
-        self.buff.push(GVMe::RTRN(proc_info.return_address));
-        self.buff.push(GVMe::lbl {
-            idx: arg_2_zero,
-            name: format!(""),
-        });
-
-        // sign = 1, mod_sign = 1
-        self.const_in_acc(&one);
-        self.buff.push(GVMe::STORE(arg1_positive));
-        self.buff.push(GVMe::STORE(arg2_positive));
-        self.buff.push(GVMe::STORE(sign_flag));
-
-        // if arg1 < 0
-        self.buff.push(GVMe::LOAD(arg1));
-        self.buff.push(GVMe::jpos(arg_1_pos.clone()));
-
-        self.const_in_acc(&m_one);
-        self.buff.push(GVMe::STORE(arg1_positive));
-        self.buff.push(GVMe::STORE(sign_flag));
-        self.const_in_acc(&zero);
-        self.buff.push(GVMe::SUB(arg1));
-        self.buff.push(GVMe::STORE(arg1));
-
-        self.buff.push(GVMe::lbl {
-            idx: arg_1_pos,
-            name: format!(""),
-        });
-
-        // if arg2 < 0
-        self.buff.push(GVMe::LOAD(arg2));
-        self.buff.push(GVMe::jpos(arg_2_pos.clone()));
-
-        self.const_in_acc(&m_one);
-        self.buff.push(GVMe::STORE(arg2_positive));
-
-        self.const_in_acc(&zero);
-        self.buff.push(GVMe::SUB(sign_flag));
-        self.buff.push(GVMe::STORE(sign_flag));
-        self.const_in_acc(&zero);
-        self.buff.push(GVMe::SUB(arg2));
-        self.buff.push(GVMe::STORE(arg2));
-
-        self.buff.push(GVMe::lbl {
-            idx: arg_2_pos,
-            name: format!(""),
-        });
-        self.buff.push(GVMe::STORE(arg2_cpy));
-
-        //TODO VVVVVV
-        let loop2_end = self.next_label();
-
-        if self.mod_div_call_count > 1 {
-            let skip = self.next_label();
-            // CHECK IF LAST ARGS ARE THE SAME
-            self.buff.push(GVMe::LOAD(arg2));
-            self.buff.push(GVMe::SUB(last_arg2));
-            self.buff.push(GVMe::jnz(skip));
-            self.buff.push(GVMe::LOAD(arg1));
-            self.buff.push(GVMe::SUB(last_arg1));
-            self.buff.push(GVMe::jz(loop2_end));
-
-            self.buff.push(GVMe::lbl {
-                idx: skip,
-                name: "".to_owned(),
-            });
-            // STORE CURRENT ARGS TO LAST ARGS
-            self.buff.push(GVMe::LOAD(arg2));
-            self.buff.push(GVMe::STORE(last_arg2));
-            self.buff.push(GVMe::LOAD(arg1));
-            self.buff.push(GVMe::STORE(last_arg1));
-        }
-        // CARRY ON
-
-        self.const_in_acc(&zero);
-        self.buff.push(GVMe::STORE(div_res));
-
-        self.const_in_acc(&one);
-        self.buff.push(GVMe::STORE(power_of_two));
-
-        self.buff.push(GVMe::LOAD(arg1));
-        self.buff.push(GVMe::STORE(mod_res));
-
-        /*
-        while arg2 - arg1 < 0:
-            arg2 += arg2
-            power_of_two += power_of_two
-        */
-        let loop1_start = self.next_label();
-        let loop_exit1 = self.next_label();
-        self.buff.push(GVMe::lbl {
-            idx: loop1_start.clone(),
-            name: format!(""),
-        });
-        self.buff.push(GVMe::LOAD(arg2));
-        self.buff.push(GVMe::SUB(mod_res));
-        self.buff.push(GVMe::jpos(loop_exit1.clone()));
-        self.buff.push(GVMe::LOAD(arg2));
-        self.buff.push(GVMe::ADD(arg2));
-        self.buff.push(GVMe::STORE(arg2));
-
-        self.buff.push(GVMe::LOAD(power_of_two));
-        self.buff.push(GVMe::ADD(power_of_two));
-        self.buff.push(GVMe::STORE(power_of_two));
-
-        self.buff.push(GVMe::lbl_jump(loop1_start));
-        self.buff.push(GVMe::lbl {
-            idx: loop_exit1,
-            name: format!(""),
-        });
-
-        /*
-        while !power_of_two <= 0:
-            if arg1 - arg2 >= 0 :
-                arg1 -= arg2
-                quotient += power_of_two
-
-            arg2 = arg2 // 2
-            power_of_two = power_of_two // 2
-        */
-        let loop2_start = self.next_label();
-        let inner_if_fail = self.next_label();
-
-        self.buff.push(GVMe::lbl {
-            idx: loop2_start.clone(),
-            name: format!(""),
-        });
-        self.buff.push(GVMe::LOAD(power_of_two));
-        self.buff.push(GVMe::jnegz(loop2_end.clone()));
-
-        self.buff.push(GVMe::LOAD(mod_res));
-        self.buff.push(GVMe::SUB(arg2));
-        self.buff.push(GVMe::jneg(inner_if_fail.clone()));
-        self.buff.push(GVMe::LOAD(mod_res));
-        self.buff.push(GVMe::SUB(arg2));
-        self.buff.push(GVMe::STORE(mod_res));
-
-        self.buff.push(GVMe::LOAD(div_res));
-        self.buff.push(GVMe::ADD(power_of_two));
-        self.buff.push(GVMe::STORE(div_res));
-
-        self.buff.push(GVMe::lbl {
-            idx: inner_if_fail,
-            name: format!(""),
-        });
-
-        self.buff.push(GVMe::LOAD(arg2));
-        self.buff.push(GVMe::HALF);
-        self.buff.push(GVMe::STORE(arg2));
-
-        self.buff.push(GVMe::LOAD(power_of_two));
-        self.buff.push(GVMe::HALF);
-        self.buff.push(GVMe::STORE(power_of_two));
-
-        self.buff.push(GVMe::lbl_jump(loop2_start));
-        self.buff.push(GVMe::lbl {
-            idx: loop2_end,
-            name: format!(""),
-        });
-
-        // what if r == 0 ?????
-        let fix_mod = self.next_label();
-        let skip_sign = self.next_label();
-        self.buff.push(GVMe::LOAD(mod_res));
-        self.buff.push(GVMe::jnz(fix_mod));
-        self.buff.push(GVMe::STORE(mod_res_rtn));
-
-        self.buff.push(GVMe::LOAD(sign_flag));
-        self.buff.push(GVMe::jpos(skip_sign));
-
-        self.const_in_acc(&zero);
-        self.buff.push(GVMe::SUB(div_res));
-        self.buff.push(GVMe::STORE(div_res));
-
-        self.buff.push(GVMe::lbl {
-            idx: skip_sign,
-            name: format!(""),
-        });
-        self.buff.push(GVMe::LOAD(div_res));
-        self.buff.push(GVMe::STORE(div_res_rtn));
-
-        self.buff.push(GVMe::RTRN(proc_info.return_address));
-
-        self.buff.push(GVMe::lbl {
-            idx: fix_mod,
-            name: "".to_owned(),
-        });
-
-        // arg1 positive
-        let arg1_is_in_fact_negative = self.next_label();
-        self.buff.push(GVMe::LOAD(arg1_positive));
-        self.buff.push(GVMe::jneg(arg1_is_in_fact_negative));
-
-        // arg1 pos, arg2 pos
-        let arg1_pos_and_arg2_negative = self.next_label();
-        self.buff.push(GVMe::LOAD(arg2_positive));
-        self.buff.push(GVMe::jneg(arg1_pos_and_arg2_negative));
-        // x>0 y>0 -> nothing
-        self.buff.push(GVMe::LOAD(mod_res));
-        self.buff.push(GVMe::STORE(mod_res_rtn));
-        self.buff.push(GVMe::LOAD(div_res));
-        self.buff.push(GVMe::STORE(div_res_rtn));
-        self.buff.push(GVMe::RTRN(proc_info.return_address));
-
-        // arg1 pos, arg2 neg
-        self.buff.push(GVMe::lbl {
-            idx: arg1_pos_and_arg2_negative,
-            name: format!(""),
-        });
-
-        // x>0 y<0 -> q = -1 - q and r = r - y
-        self.const_in_acc(&m_one);
-        self.buff.push(GVMe::SUB(div_res));
-        self.buff.push(GVMe::STORE(div_res_rtn));
-        self.buff.push(GVMe::LOAD(mod_res));
-        self.buff.push(GVMe::SUB(arg2_cpy));
-        self.buff.push(GVMe::STORE(mod_res_rtn));
-        self.buff.push(GVMe::RTRN(proc_info.return_address));
-
-        // arg1 negative
-        self.buff.push(GVMe::lbl {
-            idx: arg1_is_in_fact_negative,
-            name: format!(""),
-        });
-
-        let arg1_neg_and_arg2_neg = self.next_label();
-        self.buff.push(GVMe::LOAD(arg2_positive));
-        self.buff.push(GVMe::jneg(arg1_neg_and_arg2_neg));
-        // x<0 y>0 -> q = -1 - q and r = y - r
-        self.const_in_acc(&m_one);
-        self.buff.push(GVMe::SUB(div_res));
-        self.buff.push(GVMe::STORE(div_res_rtn));
-        self.buff.push(GVMe::LOAD(arg2_cpy));
-        self.buff.push(GVMe::SUB(mod_res));
-        self.buff.push(GVMe::STORE(mod_res_rtn));
-        self.buff.push(GVMe::RTRN(proc_info.return_address));
-
-        self.buff.push(GVMe::lbl {
-            idx: arg1_neg_and_arg2_neg,
-            name: format!(""),
-        });
-        // x<0 y<0 -> r = -r
-        self.buff.push(GVMe::LOAD(div_res));
-        self.buff.push(GVMe::STORE(div_res_rtn));
-        self.const_in_acc(&zero);
-        self.buff.push(GVMe::SUB(mod_res));
-        self.buff.push(GVMe::STORE(mod_res_rtn));
-
-        self.buff.push(GVMe::RTRN(proc_info.return_address));
-    }
-
-    fn next_label(&mut self) -> LabelIdx {
+    pub fn next_label(&mut self) -> LabelIdx {
         let lbl = LabelIdx(self.next_available_label);
         self.next_available_label += 1;
         return lbl;
