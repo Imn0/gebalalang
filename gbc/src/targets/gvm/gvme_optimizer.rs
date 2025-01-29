@@ -1,4 +1,3 @@
-
 use super::gvm_ext::{GVMe, GVMeProgram};
 
 pub fn optimize(gvme_prog: GVMeProgram) -> GVMeProgram {
@@ -42,7 +41,6 @@ pub fn optimize(gvme_prog: GVMeProgram) -> GVMeProgram {
     prog.reverse();
 
     last_stored = None;
-    last_stored_i = None;
 
     for ins in prog {
         match ins {
@@ -53,18 +51,10 @@ pub fn optimize(gvme_prog: GVMeProgram) -> GVMeProgram {
                     }
                 }
                 last_stored = Some(addr);
-                last_stored_i = None;
             }
-            GVMe::STOREI(addr) => {
-                if let Some(loc) = last_stored_i {
-                    if addr == loc {
-                        continue;
-                    }
-                }
-                last_stored = None;
-                last_stored_i = Some(addr);
-            }
+
             GVMe::call { .. }
+            | GVMe::STOREI(..)
             | GVMe::lbl_jump(..)
             | GVMe::jneg(..)
             | GVMe::jpos(..)
@@ -75,7 +65,6 @@ pub fn optimize(gvme_prog: GVMeProgram) -> GVMeProgram {
             | GVMe::jposz(..)
             | GVMe::jnegz(..) => {
                 last_stored = None;
-                last_stored_i = None;
             }
             GVMe::GET(_) => {}
             GVMe::LOAD(_) => {}
@@ -86,7 +75,6 @@ pub fn optimize(gvme_prog: GVMeProgram) -> GVMeProgram {
             GVMe::SUBI(_) => {}
             GVMe::SET(_) => {
                 last_stored = Some(0);
-                last_stored_i = None;
             }
             GVMe::HALF => {}
             GVMe::HALT => {}

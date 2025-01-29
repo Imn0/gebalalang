@@ -927,8 +927,6 @@ impl<'a> GVMeCompileContext<'a> {
                 },
                 _ => cm.clone(),
             };
-            println!("{} -> {}", cm, new_cm);
-
             self.compile_op(&new_cm);
         }
     }
@@ -1601,6 +1599,12 @@ impl<'a> GVMeCompileContext<'a> {
         for proc in &ir_program.procedures {
             if get_estimated_call_cost(proc.1) > get_estimated_proc_cost(proc.1) {
                 self.proc_info.get_mut(proc.0).unwrap().do_inline = true;
+            }
+        }
+
+        for (proc_name, count) in call_counts {
+            if count == 1 {
+                self.proc_info.get_mut(&proc_name).unwrap().do_inline = true;
             }
         }
     }
