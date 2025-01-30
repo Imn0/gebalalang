@@ -10,7 +10,7 @@ pub struct SymbolLocation {
     pub is_pointer: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Memory {
     symbols: HashMap<String, SymbolLocation>,
     constants: HashSet<i64>,
@@ -55,12 +55,12 @@ impl Memory {
         return  self.allocate(scoped_name, false, false);
     }
 
-    pub fn allocate_proc_arg(&mut self, name: &str, scope: &str, is_array: bool) -> SymbolLocation {
+    pub fn allocate_in_out_arg(&mut self, name: &str, scope: &str, is_array: bool) -> SymbolLocation {
         let scoped_name = scoped_name(name, scope);
         self.allocate(scoped_name, is_array, true)
     }
 
-    pub fn allocate_builtin_arg(&mut self, name: &str, scope: &str) -> SymbolLocation {
+    pub fn allocate_in_arg(&mut self, name: &str, scope: &str) -> SymbolLocation {
         let arg_scoped_name = scoped_name(&name, scope);
 
         let loc = SymbolLocation {
@@ -119,9 +119,9 @@ impl Memory {
         self.symbols.get(&scoped_name).unwrap()
     }
 
-    pub fn get_const(&mut self, constant: &i64) -> &SymbolLocation {
+    pub fn get_const(&self, constant: &i64) -> Option<&SymbolLocation> {
         let c_name = constant_name(constant);
-        self.symbols.get(&c_name).unwrap()
+        self.symbols.get(&c_name)
     }
 
     pub fn get_constants(&mut self) -> Vec<i64> {

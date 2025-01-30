@@ -148,7 +148,7 @@ impl CodeBlock {
                         label: label.clone(),
                     }
                 }
-                IR::Call {
+                IR::ProcCall {
                     procedure,
                     arguments,
                 } => {
@@ -156,7 +156,7 @@ impl CodeBlock {
                         .iter()
                         .map(|arg| self.get_current_var(arg))
                         .collect();
-                    IR::Call {
+                    IR::ProcCall {
                         procedure: procedure.clone(),
                         arguments: args,
                     }

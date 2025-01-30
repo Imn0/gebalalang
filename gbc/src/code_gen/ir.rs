@@ -73,7 +73,7 @@ pub enum IR {
         right: IrOperand,
         label: String,
     },
-    Call {
+    ProcCall {
         procedure: String,
         arguments: Vec<IrOperand>,
     },
@@ -129,7 +129,7 @@ impl fmt::Display for IR {
                     IR::JNegativeOrZero { left, right, label } => {
                         write!(f, "jnegz {} {} {}", label, left, right)
                     }
-                    IR::Call {
+                    IR::ProcCall {
                         procedure,
                         arguments,
                     } => {
@@ -173,6 +173,25 @@ impl fmt::Display for IrOperand {
                 base_name,
                 idx_name,
             } => write!(f, "{}[{}]", base_name, idx_name),
+        }
+    }
+}
+
+impl IrOperand {
+    pub fn base_name(&self) -> &str {
+        match self {
+            IrOperand::Variable(name) => &name,
+            IrOperand::Constant(_) => "CONST",
+            IrOperand::ArrayConstAccess { base_name, .. } => &base_name,
+            IrOperand::ArrayDynamicAccess { base_name, .. } => &base_name,
+        }
+    }
+    pub fn is_array(&self) -> bool {
+        match self {
+            IrOperand::Variable(_) => return false,
+            IrOperand::Constant(_) => return false,
+            IrOperand::ArrayConstAccess { .. } => return true,
+            IrOperand::ArrayDynamicAccess { .. } => return true,
         }
     }
 }
@@ -301,10 +320,10 @@ impl<'a> IRNameTransformer<'a> {
                     right: self.ir_oper_transform(right),
                     label: label.to_string(),
                 },
-                IR::Call {
+                IR::ProcCall {
                     procedure,
                     arguments,
-                } => IR::Call {
+                } => IR::ProcCall {
                     procedure: procedure.to_string(),
                     arguments: arguments
                         .iter()

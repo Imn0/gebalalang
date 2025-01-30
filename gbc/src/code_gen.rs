@@ -7,13 +7,14 @@ use ir::IR;
 mod ir_generator;
 mod ir_tac_ify;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ArgInfo {
     pub name: String,
     pub is_array: bool,
+    pub is_in_only: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ProcedureInfo {
     pub name: String,
     pub lbl: String,

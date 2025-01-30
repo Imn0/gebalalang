@@ -85,7 +85,9 @@ impl fmt::Display for GVMe {
 pub struct GVMeProgram {
     pub code: Vec<GVMe>,
     pub proc_info: HashMap<String, GVMeProc>,
+    pub memory: Memory
 }
+
 #[derive(Debug, Clone)]
 pub struct GVMeProc {
     pub label: LabelIdx,
@@ -102,7 +104,7 @@ pub struct GVMeCompileContext<'a> {
     pub buff: Vec<GVMe>,
     pub last_mem_slot: usize,
     pub mul_call_count: i64,
-    code: Vec<GVMe>,
+    final_code: Vec<GVMe>,
     ir_proc_info: HashMap<String, &'a ProcedureInfo>,
     current_scope: String,
     pub mod_div_call_count: i64,
@@ -120,7 +122,7 @@ struct VarLoc {
 pub fn compile(ir_program: &IrProgram) -> GVMeProgram {
     let mut generator = GVMeCompileContext {
         buff: vec![],
-        code: vec![],
+        final_code: vec![],
         memory: Memory::new(),
         proc_info: HashMap::new(),
         current_scope: String::new(),
@@ -138,8 +140,9 @@ pub fn compile(ir_program: &IrProgram) -> GVMeProgram {
     generator.generate_code(ir_program);
 
     GVMeProgram {
-        code: generator.code,
+        code: generator.final_code,
         proc_info: generator.proc_info,
+        memory: generator.memory
     }
 }
 
@@ -175,8 +178,8 @@ impl<'a> GVMeCompileContext<'a> {
 
         let mut compiled_procs: HashSet<String> = HashSet::new();
 
+        // hard limit for iterations
         for _ in 0..=ir_program.procedures.len() {
-            // hard limit for iterations
             let left_to_compile: Vec<String> = self
                 .proc_to_compile
                 .difference(&compiled_procs)
@@ -211,23 +214,31 @@ impl<'a> GVMeCompileContext<'a> {
         // fill in all constants
         let constants = self.memory.get_constants().clone();
         for constant in constants {
-            let loc = self.memory.get_const(&constant);
-            self.code.push(GVMe::SET(constant.clone()));
-            self.code.push(GVMe::STORE(loc.memory_address));
+            let loc = self.memory.get_const(&constant).unwrap();
+            self.final_code.push(GVMe::SET(constant.clone()));
+            self.final_code.push(GVMe::STORE(loc.memory_address));
         }
 
-        self.code.append(&mut self.buff);
+        self.final_code.append(&mut self.buff);
     }
 
     fn generate_procedure_stub(&mut self, proc_info: &ProcedureInfo) -> GVMeProc {
         let mut v_args = vec![];
         let mut arg_names = vec![];
         for arg in &proc_info.args {
-            v_args.push(
-                self.memory
-                    .allocate_proc_arg(&arg.name, &proc_info.name, arg.is_array)
-                    .memory_address,
-            );
+            if arg.is_in_only {
+                v_args.push(
+                    self.memory
+                        .allocate_in_arg(&arg.name, &proc_info.name)
+                        .memory_address,
+                );
+            } else {
+                v_args.push(
+                    self.memory
+                        .allocate_in_out_arg(&arg.name, &proc_info.name, arg.is_array)
+                        .memory_address,
+                );
+            }
             arg_names.push(arg.name.clone());
         }
 
@@ -299,110 +310,107 @@ impl<'a> GVMeCompileContext<'a> {
                     }
                 }
                 IR::Add { dest, left, right } => {
-                    if let (Some(dest_loc), Some(left_loc), Some(right_loc)) = (
-                        self.get_var_location_no_extra_cmds(dest),
-                        self.get_var_location_no_extra_cmds(left),
-                        self.get_var_location_no_extra_cmds(right),
-                    ) {
-                        self.compile_load_loc_to_acc(&left_loc);
-                        if right_loc.is_pointer {
-                            self.buff.push(GVMe::ADDI(right_loc.loc));
-                        } else {
-                            self.buff.push(GVMe::ADD(right_loc.loc));
-                        }
-                        self.compile_store_acc_to_loc(&dest_loc);
-                    } else {
-                        let mut dst_loc = self.get_var_location(dest);
-                        if dst_loc.loc == 0 {
-                            self.buff.push(GVMe::STORE(self.last_mem_slot));
-                            dst_loc.loc = self.last_mem_slot;
-                        }
+                    let dest_addr_loc = self.last_mem_slot;
+                    let right_addr_loc = self.last_mem_slot - 1;
+                    let dest_loc = self.get_var_location_not_acc(dest, dest_addr_loc);
 
-                        let mut left_loc = self.get_var_location(left);
-                        if left_loc.loc == 0 {
-                            self.buff.push(GVMe::STORE(self.last_mem_slot - 1));
-                            left_loc.loc = self.last_mem_slot - 1;
+                    match (self.is_pointer(left), self.is_pointer(right)) {
+                        (true, true) => {
+                            let right_loc = self.get_var_location_not_acc(right, right_addr_loc);
+                            self.compile_load_oper_to_acc(&left);
+                            self.compile_add(&right_loc);
+                            self.compile_store_acc_to_loc(&dest_loc);
                         }
+                        (true, false) => {
+                            let right_loc = self.get_var_location_no_extra_cmds(right).unwrap();
 
-                        let right_loc = self.get_var_location(right);
-                        if right_loc.is_pointer {
-                            self.buff.push(GVMe::LOADI(right_loc.loc));
-                        } else {
-                            self.buff.push(GVMe::LOAD(right_loc.loc));
+                            self.compile_load_oper_to_acc(&left);
+                            self.compile_add(&right_loc);
+                            self.compile_store_acc_to_loc(&dest_loc);
                         }
+                        (false, true) => {
+                            let left_loc = self.get_var_location_no_extra_cmds(left).unwrap();
 
-                        if left_loc.is_pointer {
-                            self.buff.push(GVMe::ADDI(left_loc.loc));
-                        } else {
-                            self.buff.push(GVMe::ADD(left_loc.loc));
+                            self.compile_load_oper_to_acc(&right);
+                            self.compile_add(&left_loc);
+                            self.compile_store_acc_to_loc(&dest_loc);
                         }
+                        (false, false) => {
+                            let left_loc = self.get_var_location_no_extra_cmds(left).unwrap();
+                            let right_loc = self.get_var_location_no_extra_cmds(right).unwrap();
 
-                        self.compile_store_acc_to_loc(&dst_loc);
+                            self.compile_load_loc_to_acc(&right_loc);
+                            self.compile_add(&left_loc);
+                            self.compile_store_acc_to_loc(&dest_loc);
+                        }
                     }
                 }
                 IR::Sub { dest, left, right } => {
-                    if let (Some(dest_loc), Some(left_loc), Some(right_loc)) = (
-                        self.get_var_location_no_extra_cmds(dest),
-                        self.get_var_location_no_extra_cmds(left),
-                        self.get_var_location_no_extra_cmds(right),
-                    ) {
-                        self.compile_load_loc_to_acc(&left_loc);
-                        if right_loc.is_pointer {
-                            self.buff.push(GVMe::SUBI(right_loc.loc));
-                        } else {
-                            self.buff.push(GVMe::SUB(right_loc.loc));
-                        }
-                        self.compile_store_acc_to_loc(&dest_loc);
-                    } else {
-                        let mut dst_loc = self.get_var_location(dest);
-                        if dst_loc.loc == 0 {
-                            self.buff.push(GVMe::STORE(self.last_mem_slot));
-                            dst_loc.loc = self.last_mem_slot;
-                        }
+                    let dest_addr_loc = self.last_mem_slot;
+                    let right_addr_loc = self.last_mem_slot - 1;
+                    let dest_loc = self.get_var_location_not_acc(dest, dest_addr_loc);
 
-                        let mut right_loc = self.get_var_location(right);
-                        if right_loc.loc == 0 {
-                            self.buff.push(GVMe::STORE(self.last_mem_slot - 1));
-                            right_loc.loc = self.last_mem_slot - 1;
+                    match (self.is_pointer(left), self.is_pointer(right)) {
+                        (true, true) => {
+                            let right_loc = self.get_var_location_not_acc(right, right_addr_loc);
+                            self.compile_load_oper_to_acc(&left);
+                            self.compile_sub(&right_loc);
+                            self.compile_store_acc_to_loc(&dest_loc);
                         }
+                        (true, false) => {
+                            let right_loc = self.get_var_location_no_extra_cmds(right).unwrap();
 
-                        let left_loc = self.get_var_location(left);
-                        if left_loc.is_pointer {
-                            self.buff.push(GVMe::LOADI(left_loc.loc));
-                        } else {
-                            self.buff.push(GVMe::LOAD(left_loc.loc));
+                            self.compile_load_oper_to_acc(&left);
+                            self.compile_sub(&right_loc);
+                            self.compile_store_acc_to_loc(&dest_loc);
                         }
-
-                        if right_loc.is_pointer {
-                            self.buff.push(GVMe::SUBI(right_loc.loc));
-                        } else {
-                            self.buff.push(GVMe::SUB(right_loc.loc));
+                        (false, true) => {
+                            let right_loc = self.get_var_location_not_acc(right, right_addr_loc);
+                            self.compile_load_oper_to_acc(&left);
+                            self.compile_sub(&right_loc);
+                            self.compile_store_acc_to_loc(&dest_loc);
                         }
+                        (false, false) => {
+                            let left_loc = self.get_var_location_no_extra_cmds(left).unwrap();
+                            let right_loc = self.get_var_location_no_extra_cmds(right).unwrap();
 
-                        self.compile_store_acc_to_loc(&dst_loc);
+                            self.compile_load_loc_to_acc(&left_loc);
+                            self.compile_sub(&right_loc);
+                            self.compile_store_acc_to_loc(&dest_loc);
+                        }
                     }
                 }
                 IR::Mul { dest, left, right } => {
                     if let IrOperand::Constant(const_right) = right {
-                        if *const_right == 2 {
+                        if const_right.count_ones() == 1 && *const_right < 32 {
                             let left_loc = self.get_var_location_not_acc(left, self.last_mem_slot);
                             let dest_loc =
                                 self.get_var_location_not_acc(dest, self.last_mem_slot - 1);
                             self.compile_load_loc_to_acc(&left_loc);
-                            self.buff.push(GVMe::ADD(0));
+                            let mut c = 1;
+                            while c < *const_right {
+                                self.buff.push(GVMe::ADD(0));
+                                c += c;
+                            }
                             self.compile_store_acc_to_loc(&dest_loc);
                             continue;
                         }
                     }
 
                     if let IrOperand::Constant(const_left) = left {
-                        if *const_left == 2 {
+                        if const_left.count_ones() == 1 && *const_left < 32 {
                             let right_loc =
                                 self.get_var_location_not_acc(right, self.last_mem_slot);
                             let dest_loc =
                                 self.get_var_location_not_acc(dest, self.last_mem_slot - 1);
                             self.compile_load_loc_to_acc(&right_loc);
-                            self.buff.push(GVMe::ADD(0));
+
+                            let mut c = 1;
+                            while c < *const_left {
+                                self.buff.push(GVMe::ADD(0));
+                                c += c;
+                            }
+
                             self.compile_store_acc_to_loc(&dest_loc);
                             continue;
                         }
@@ -443,12 +451,18 @@ impl<'a> GVMeCompileContext<'a> {
                 }
                 IR::Div { dest, left, right } => {
                     if let IrOperand::Constant(const_right) = right {
-                        if *const_right == 2 {
+                        if const_right.count_ones() == 1 && *const_right < 32 {
                             let left_loc = self.get_var_location_not_acc(left, self.last_mem_slot);
                             let dest_loc =
                                 self.get_var_location_not_acc(dest, self.last_mem_slot - 1);
                             self.compile_load_loc_to_acc(&left_loc);
-                            self.buff.push(GVMe::HALF);
+
+                            let mut c = 1;
+                            while c < *const_right {
+                                self.buff.push(GVMe::HALF);
+                                c += c;
+                            }
+
                             self.compile_store_acc_to_loc(&dest_loc);
                             continue;
                         }
@@ -499,6 +513,50 @@ impl<'a> GVMeCompileContext<'a> {
                     self.last_mem_slot += 1;
                 }
                 IR::Mod { dest, left, right } => {
+                    if let IrOperand::Constant(const_right) = right {
+                        // TODO ADD THIS TO RUNTIME AS WELL (MUL DIV too)
+                        if const_right.count_ones() == 1 && *const_right < 32 {
+                            let left_loc = self.last_mem_slot - 2;
+
+                            let dest_loc =
+                                self.get_var_location_not_acc(dest, self.last_mem_slot - 1);
+
+                            let negative_check = self.next_label();
+                            self.const_in_acc(&1);
+                            self.compile_load_oper_to_acc(left);
+                            self.buff.push(GVMe::STORE(left_loc));
+                            self.buff.push(GVMe::jpos(negative_check));
+                            self.const_in_acc(&0);
+                            self.buff.push(GVMe::SUB(left_loc));
+                            self.buff.push(GVMe::STORE(left_loc));
+
+                            self.buff.push(GVMe::lbl {
+                                idx: negative_check,
+                                name: "".to_owned(),
+                            });
+
+                            let mut c = 1;
+                            while c < *const_right {
+                                self.buff.push(GVMe::HALF);
+                                c += c;
+                            }
+
+                            let mut c = 1;
+                            while c < *const_right {
+                                self.buff.push(GVMe::ADD(0)); // TODO <<<--------- this
+                                c += c;
+                            }
+
+                            self.buff.push(GVMe::SUB(left_loc));
+                            self.buff.push(GVMe::STORE(self.last_mem_slot));
+                            let zero = self.get_const_loc(&0);
+                            self.buff.push(GVMe::LOAD(zero.loc));
+                            self.buff.push(GVMe::SUB(self.last_mem_slot));
+                            self.compile_store_acc_to_loc(&dest_loc);
+                            continue;
+                        }
+                    }
+
                     // check two back an two forwards, if there is no div we call mod instead of div_mod
                     let mut call_mod = true;
                     for j in i - 2..=i + 2 {
@@ -515,20 +573,14 @@ impl<'a> GVMeCompileContext<'a> {
                     if call_mod {
                         self.do_compile_mod = true;
 
-                        let left_arg_loc = self
-                            .proc_info
-                            .get(BUILTINS::MOD.to_name())
-                            .unwrap()
-                            .args[0];
+                        let left_arg_loc =
+                            self.proc_info.get(BUILTINS::MOD.to_name()).unwrap().args[0];
                         let left_loc = self.get_var_location(left);
                         self.compile_load_loc_to_acc(&left_loc);
                         self.buff.push(GVMe::STORE(left_arg_loc));
 
-                        let right_arg_loc = self
-                            .proc_info
-                            .get(BUILTINS::MOD.to_name())
-                            .unwrap()
-                            .args[1];
+                        let right_arg_loc =
+                            self.proc_info.get(BUILTINS::MOD.to_name()).unwrap().args[1];
                         let right_loc = self.get_var_location(right);
                         self.compile_load_loc_to_acc(&right_loc);
                         self.buff.push(GVMe::STORE(right_arg_loc));
@@ -545,11 +597,7 @@ impl<'a> GVMeCompileContext<'a> {
                         }
 
                         self.compile_load_loc_to_acc(&VarLoc {
-                            loc: self
-                                .proc_info
-                                .get(BUILTINS::MOD.to_name())
-                                .unwrap()
-                                .args[2],
+                            loc: self.proc_info.get(BUILTINS::MOD.to_name()).unwrap().args[2],
                             is_pointer: false,
                         });
                         self.compile_store_acc_to_loc(&dest_loc);
@@ -637,7 +685,7 @@ impl<'a> GVMeCompileContext<'a> {
                     self.compile_comparison(left, right);
                     self.buff.push(GVMe::jnegz(self.get_label(label)));
                 }
-                IR::Call {
+                IR::ProcCall {
                     procedure,
                     arguments,
                 } => {
@@ -663,11 +711,19 @@ impl<'a> GVMeCompileContext<'a> {
 
                             let target_mem_loc = proc_args.get(i).unwrap().clone();
 
-                            if arg_mem_loc.is_pointer {
-                                self.buff.push(GVMe::LOAD(arg_mem_loc.memory_address));
+                            if ir_proc.args.get(i).unwrap().is_in_only {
+                                if arg_mem_loc.is_pointer {
+                                    self.buff.push(GVMe::LOADI(arg_mem_loc.memory_address));
+                                } else {
+                                    self.buff.push(GVMe::LOAD(arg_mem_loc.memory_address));
+                                }
                                 self.buff.push(GVMe::STORE(target_mem_loc));
                             } else {
-                                self.const_in_acc(&arg_mem_loci64);
+                                if arg_mem_loc.is_pointer {
+                                    self.buff.push(GVMe::LOAD(arg_mem_loc.memory_address));
+                                } else {
+                                    self.const_in_acc(&arg_mem_loci64);
+                                }
                                 self.buff.push(GVMe::STORE(target_mem_loc));
                             }
                         }
@@ -708,45 +764,30 @@ impl<'a> GVMeCompileContext<'a> {
     }
 
     fn compile_comparison(&mut self, left: &IrOperand, right: &IrOperand) {
-        if let (Some(left_loc), Some(right_loc)) = (
-            self.get_var_location_no_extra_cmds(left),
-            self.get_var_location_no_extra_cmds(right),
-        ) {
-            if let IrOperand::Constant(c) = right {
-                if *c == 0 {
-                    if left_loc.is_pointer {
-                        self.buff.push(GVMe::LOADI(left_loc.loc));
-                    } else {
-                        self.buff.push(GVMe::LOAD(left_loc.loc));
-                    }
-                    return;
-                }
+        let right_addr_loc = self.last_mem_slot;
+        match (self.is_pointer(left), self.is_pointer(right)) {
+            (true, true) => {
+                let right_loc = self.get_var_location_not_acc(right, right_addr_loc);
+                self.compile_load_oper_to_acc(&left);
+                self.compile_sub(&right_loc);
             }
+            (true, false) => {
+                let right_loc = self.get_var_location_no_extra_cmds(right).unwrap();
 
-            if left_loc.is_pointer {
-                self.buff.push(GVMe::LOADI(left_loc.loc));
-            } else {
-                self.buff.push(GVMe::LOAD(left_loc.loc));
+                self.compile_load_oper_to_acc(&left);
+                self.compile_sub(&right_loc);
             }
+            (false, true) => {
+                let right_loc = self.get_var_location_not_acc(right, right_addr_loc);
+                self.compile_load_oper_to_acc(&left);
+                self.compile_sub(&right_loc);
+            }
+            (false, false) => {
+                let left_loc = self.get_var_location_no_extra_cmds(left).unwrap();
+                let right_loc = self.get_var_location_no_extra_cmds(right).unwrap();
 
-            if right_loc.is_pointer {
-                self.buff.push(GVMe::SUBI(right_loc.loc));
-            } else {
-                self.buff.push(GVMe::SUB(right_loc.loc));
-            }
-        } else {
-            let mut right_loc = self.get_var_location(right);
-            if right_loc.loc == 0 {
-                right_loc.loc = self.last_mem_slot;
-                self.buff.push(GVMe::STORE(self.last_mem_slot));
-            }
-
-            let left_loc = self.get_var_location(left);
-            self.compile_load_loc_to_acc(&left_loc);
-            if right_loc.is_pointer {
-                self.buff.push(GVMe::SUBI(right_loc.loc));
-            } else {
-                self.buff.push(GVMe::SUB(right_loc.loc));
+                self.compile_load_loc_to_acc(&left_loc);
+                self.compile_sub(&right_loc);
             }
         }
     }
@@ -758,11 +799,45 @@ impl<'a> GVMeCompileContext<'a> {
             self.buff.push(GVMe::LOAD(loc.loc));
         }
     }
+
+    fn compile_add(&mut self, loc: &VarLoc) {
+        if loc.is_pointer {
+            self.buff.push(GVMe::ADDI(loc.loc));
+        } else {
+            self.buff.push(GVMe::ADD(loc.loc));
+        }
+    }
+
+    fn compile_sub(&mut self, loc: &VarLoc) {
+        if loc.is_pointer {
+            self.buff.push(GVMe::SUBI(loc.loc));
+        } else {
+            self.buff.push(GVMe::SUB(loc.loc));
+        }
+    }
+
     fn compile_store_acc_to_loc(&mut self, loc: &VarLoc) {
         if loc.is_pointer {
             self.buff.push(GVMe::STOREI(loc.loc));
         } else {
             self.buff.push(GVMe::STORE(loc.loc));
+        }
+    }
+
+    fn compile_load_oper_to_acc(&mut self, operand: &IrOperand) {
+        let loc = self.get_var_location(operand);
+        if loc.is_pointer {
+            self.buff.push(GVMe::LOADI(loc.loc));
+        } else {
+            self.buff.push(GVMe::LOAD(loc.loc));
+        }
+    }
+
+    fn is_pointer(&mut self, operand: &IrOperand) -> bool {
+        if let Some(_) = self.get_var_location_no_extra_cmds(operand) {
+            return false;
+        } else {
+            return true;
         }
     }
 
@@ -996,7 +1071,7 @@ impl<'a> GVMeCompileContext<'a> {
         }
 
         for cmd in &ir_program.main {
-            if let IR::Call {
+            if let IR::ProcCall {
                 procedure,
                 arguments: _,
             } = cmd
@@ -1016,7 +1091,7 @@ impl<'a> GVMeCompileContext<'a> {
             for proc_name in to_process {
                 let code = &self.ir_proc_info.get(&proc_name).unwrap().cmds;
                 for ir in code {
-                    if let IR::Call {
+                    if let IR::ProcCall {
                         procedure,
                         arguments: _,
                     } = ir

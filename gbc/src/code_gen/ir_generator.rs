@@ -38,6 +38,7 @@ impl IrProgram {
             args.push(ArgInfo {
                 name: arg.name.clone(),
                 is_array: arg.is_array,
+                is_in_only: false,
             });
         }
 
@@ -239,7 +240,7 @@ impl IrProgram {
                 arguments,
                 ..
             } => {
-                vec![IR::Call {
+                vec![IR::ProcCall {
                     procedure: proc_name.clone(),
                     arguments: arguments
                         .iter()

@@ -13,6 +13,9 @@ pub fn optimize(gvme_prog: GVMeProgram) -> GVMeProgram {
                         continue;
                     }
                 }
+                if addr == 0 {
+                    continue;
+                }
             }
             GVMe::LOADI(addr) => {
                 if let Some(loc) = last_stored_i {
@@ -40,5 +43,6 @@ pub fn optimize(gvme_prog: GVMeProgram) -> GVMeProgram {
     GVMeProgram {
         code: prog,
         proc_info: gvme_prog.proc_info,
+        memory: gvme_prog.memory,
     }
 }

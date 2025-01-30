@@ -196,7 +196,7 @@ fn compile_op(ir_op: &IR) -> String {
                 label
             )
         }
-        IR::Call {
+        IR::ProcCall {
             procedure,
             arguments,
         } => {

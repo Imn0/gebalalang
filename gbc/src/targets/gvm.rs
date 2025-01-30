@@ -14,7 +14,7 @@ impl Compile for GvmTarget {
         let gvme = compile(ir_prog);
         // let optimized = gvme;
         let optimized = optimize(gvme);
-        let assembled = assemble(&optimized.code, &optimized.proc_info);
+        let assembled = assemble(&optimized.code, &optimized.proc_info, &optimized.memory);
 
         let mut out = String::new();
 

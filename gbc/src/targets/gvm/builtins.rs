@@ -24,22 +24,22 @@ impl<'a> GVMeCompileContext<'a> {
         let mut args = vec![];
         args.push(
             self.memory
-                .allocate_builtin_arg("arg1", &proc_name)
+                .allocate_in_arg("arg1", &proc_name)
                 .memory_address,
         );
         args.push(
             self.memory
-                .allocate_builtin_arg("arg2", &proc_name)
+                .allocate_in_arg("arg2", &proc_name)
                 .memory_address,
         );
         args.push(
             self.memory
-                .allocate_builtin_arg("rtn", &proc_name)
+                .allocate_in_arg("rtn", &proc_name)
                 .memory_address,
         );
 
-        self.memory.allocate_builtin_arg("last_arg1", &proc_name);
-        self.memory.allocate_builtin_arg("last_arg2", &proc_name);
+        self.memory.allocate_in_arg("last_arg1", &proc_name);
+        self.memory.allocate_in_arg("last_arg2", &proc_name);
 
         self.next_available_label += 1;
         GVMeProc {
@@ -63,17 +63,17 @@ impl<'a> GVMeCompileContext<'a> {
         let mut args = vec![];
         args.push(
             self.memory
-                .allocate_builtin_arg("arg1", &proc_name)
+                .allocate_in_arg("arg1", &proc_name)
                 .memory_address,
         );
         args.push(
             self.memory
-                .allocate_builtin_arg("arg2", &proc_name)
+                .allocate_in_arg("arg2", &proc_name)
                 .memory_address,
         );
         args.push(
             self.memory
-                .allocate_builtin_arg("rtn", &proc_name)
+                .allocate_in_arg("rtn", &proc_name)
                 .memory_address,
         );
 
@@ -93,33 +93,33 @@ impl<'a> GVMeCompileContext<'a> {
         let mut args = vec![];
         args.push(
             self.memory
-                .allocate_builtin_arg("arg1", &proc_name)
+                .allocate_in_arg("arg1", &proc_name)
                 .memory_address,
         );
         args.push(
             self.memory
-                .allocate_builtin_arg("arg2", &proc_name)
+                .allocate_in_arg("arg2", &proc_name)
                 .memory_address,
         );
         args.push(
             self.memory
-                .allocate_builtin_arg("dividend", &proc_name)
+                .allocate_in_arg("dividend", &proc_name)
                 .memory_address,
         );
         args.push(
             self.memory
-                .allocate_builtin_arg("divisor", &proc_name)
+                .allocate_in_arg("divisor", &proc_name)
                 .memory_address,
         );
 
         args.push(
             self.memory
-                .allocate_builtin_arg("last_arg1", &proc_name)
+                .allocate_in_arg("last_arg1", &proc_name)
                 .memory_address,
         );
         args.push(
             self.memory
-                .allocate_builtin_arg("last_arg2", &proc_name)
+                .allocate_in_arg("last_arg2", &proc_name)
                 .memory_address,
         );
 

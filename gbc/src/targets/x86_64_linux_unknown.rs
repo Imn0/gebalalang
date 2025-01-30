@@ -211,7 +211,7 @@ impl CodeBlock {
                 self.asm += &format!("cmp rax, {}\n", right);
                 self.asm += &format!("js {}\n", label);
             }
-            IR::Call { .. } => todo!(),
+            IR::ProcCall { .. } => todo!(),
             IR::Return => todo!(),
             IR::Drop { .. } => {}
         }

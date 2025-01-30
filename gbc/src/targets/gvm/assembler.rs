@@ -1,4 +1,7 @@
-use super::gvm_ext::{GVMe, GVMeProc};
+use super::{
+    gvm_ext::{GVMe, GVMeProc},
+    memory::Memory,
+};
 use std::{collections::HashMap, fmt};
 
 #[derive(Clone)]
@@ -180,7 +183,7 @@ impl From<GVMe> for GVM {
     }
 }
 
-pub fn assemble(gvme: &Vec<GVMe>, procs: &HashMap<String, GVMeProc>) -> Vec<GVM> {
+pub fn assemble(gvme: &Vec<GVMe>, procs: &HashMap<String, GVMeProc>, memory: &Memory) -> Vec<GVM> {
     let mut asm_code: Vec<GVM> = vec![];
 
     // exapnd procedure calls
@@ -192,7 +195,12 @@ pub fn assemble(gvme: &Vec<GVMe>, procs: &HashMap<String, GVMeProc>) -> Vec<GVM>
                 let jump_dist = distance_to_label(gvme, i, proc_info.label.0);
 
                 let return_place = get_true_len_between(gvme, 0, i) + 3;
-                asm_code.push(GVM::SET(return_place as i64));
+                if let Some(loc) = memory.get_const(&(return_place as i64)) {
+                    // woho a lucky day! 
+                    asm_code.push(GVM::LOAD(loc.memory_address));
+                } else {
+                    asm_code.push(GVM::SET(return_place as i64));
+                }
                 asm_code.push(GVM::STORE(proc_info.return_address));
                 asm_code.push(GVM::JUMP(jump_dist - 2));
             }
