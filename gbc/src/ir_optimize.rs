@@ -24,6 +24,9 @@ impl Program {
             Box::new(RemoveUnusedProcedures),
             Box::new(ConstantFolding),
             Box::new(OptimizeInOutParameters),
+            Box::new(OptimizeInOutParameters),
+            Box::new(OptimizeInOutParameters),
+            Box::new(OptimizeInOutParameters),
         ];
 
         for optimization_pass in optimization_passes {

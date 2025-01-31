@@ -5,6 +5,7 @@ use crate::{
 
 use std::{
     collections::HashMap,
+    fmt::{self, Display},
     ops::{self},
 };
 use tree_sitter::{Node, Tree};
@@ -753,6 +754,117 @@ impl Condition {
                     return -1;
                 }
             }
+        }
+    }
+}
+
+impl fmt::Display for Command {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Command::Assignment {
+                identifier,
+                expression,
+                ..
+            } => {
+                write!(f, "{identifier} := {expression}")
+            }
+            Command::IfElse { condition, .. } => {
+                write!(f, "IF {condition} THEN")
+            }
+            Command::If { condition, .. } => {
+                write!(f, "IF {condition} THEN")
+            }
+            Command::While { condition, .. } => {
+                write!(f, "WHILE {condition} DO")
+            }
+            Command::Repeat { condition, .. } => {
+                write!(f, "UNTIL {condition};")
+            }
+            Command::For {
+                variable,
+                from,
+                to,
+                direction,
+                ..
+            } => {
+                write!(f, "FOR {variable} FROM {from} ")?;
+
+                match direction {
+                    ForDirection::Ascending => write!(f, "TO")?,
+                    ForDirection::Descending => write!(f, "DOWNTO")?,
+                }
+                write!(f, " {to}")
+            }
+            Command::ProcedureCall {
+                proc_name,
+                arguments,
+                ..
+            } => {
+                write!(
+                    f,
+                    "{}({});",
+                    proc_name,
+                    arguments
+                        .iter()
+                        .map(|o| o.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+            }
+            Command::Read(identifier) => {
+                write!(f, "READ {identifier};")
+            }
+            Command::Write(value) => {
+                write!(f, "WRITE {value};")
+            }
+        }
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Number(n) => write!(f, "{n}"),
+            Value::Identifier(identifier) => write!(f, "{identifier}"),
+        }
+    }
+}
+
+impl Display for Condition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Condition::Equal(value, value1) => write!(f, "{value} = {value1}"),
+            Condition::NotEqual(value, value1) => write!(f, "{value} != {value1}"),
+            Condition::GreaterThan(value, value1) => write!(f, "{value} > {value1}"),
+            Condition::LessThan(value, value1) => write!(f, "{value} < {value1}"),
+            Condition::GreaterOrEqual(value, value1) => write!(f, "{value} >= {value1}"),
+            Condition::LessOrEqual(value, value1) => write!(f, "{value} <= {value1}"),
+        }
+    }
+}
+
+impl Display for Expression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Expression::Value(value) => write!(f, "{value}"),
+            Expression::Addition(value, value1) => write!(f, "{value} + {value1}"),
+            Expression::Subtraction(value, value1) => write!(f, "{value} - {value1}"),
+            Expression::Multiplication(value, value1) => write!(f, "{value} * {value1}"),
+            Expression::Division(value, value1) => write!(f, "{value} / {value1}"),
+            Expression::Modulo(value, value1) => write!(f, "{value} % {value1}"),
+        }
+    }
+}
+
+impl Display for Identifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(idx) = &self.index {
+            match idx {
+                Either::Left(s) => write!(f, "{}[{}]", self.name, s),
+                Either::Right(i) => write!(f, "{}[{}]", self.name, i),
+            }
+        } else {
+            write!(f, "{}", self.name)
         }
     }
 }

@@ -85,7 +85,7 @@ impl fmt::Display for GVMe {
 pub struct GVMeProgram {
     pub code: Vec<GVMe>,
     pub proc_info: HashMap<String, GVMeProc>,
-    pub memory: Memory
+    pub memory: Memory,
 }
 
 #[derive(Debug, Clone)]
@@ -142,7 +142,7 @@ pub fn compile(ir_program: &IrProgram) -> GVMeProgram {
     GVMeProgram {
         code: generator.final_code,
         proc_info: generator.proc_info,
-        memory: generator.memory
+        memory: generator.memory,
     }
 }
 
@@ -784,6 +784,12 @@ impl<'a> GVMeCompileContext<'a> {
             }
             (false, false) => {
                 let left_loc = self.get_var_location_no_extra_cmds(left).unwrap();
+                if let IrOperand::Constant(c) = right {
+                    if *c == 0 {
+                        self.compile_load_loc_to_acc(&left_loc);
+                        return;
+                    }
+                }
                 let right_loc = self.get_var_location_no_extra_cmds(right).unwrap();
 
                 self.compile_load_loc_to_acc(&left_loc);
