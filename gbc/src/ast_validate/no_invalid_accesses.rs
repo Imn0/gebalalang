@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, default};
 
 use crate::{
     ast::{
@@ -9,7 +9,7 @@ use crate::{
     program::Program,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct SymbolLocation {
     is_array: bool,
     is_pointer: bool,
@@ -706,7 +706,16 @@ impl<'a> GeneratorValidator<'a> {
                 }
 
                 for (i, arg) in arguments.iter().enumerate() {
-                    let a = self.get_variable_current_scope(&arg.name).unwrap();
+                    let a = self
+                        .get_variable_current_scope(&arg.name)
+                        .unwrap_or_else(|e| {
+                            self.add_message(ValidateInfo {
+                                message: e,
+                                location: Some(arg.location.clone()),
+                                severity: MessageSeverity::ERROR,
+                            });
+                            SymbolLocation::default()
+                        });
 
                     let arg_is_bool = *proc_info.args.get(i).unwrap();
                     if a.is_array != arg_is_bool {

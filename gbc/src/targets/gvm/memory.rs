@@ -153,5 +153,5 @@ fn scoped_name(name: &str, scope: &str) -> String {
 }
 
 fn constant_name(constant: &i64) -> String {
-    return format!("$:{}", constant);
+    return format!("$::{}", constant);
 }
