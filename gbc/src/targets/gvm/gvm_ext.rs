@@ -85,7 +85,7 @@ impl fmt::Display for GVMe {
 pub struct GVMeProgram {
     pub code: Vec<GVMe>,
     pub proc_info: HashMap<String, GVMeProc>,
-    pub memory: Memory
+    pub memory: Memory,
 }
 
 #[derive(Debug, Clone)]
@@ -142,7 +142,7 @@ pub fn compile(ir_program: &IrProgram) -> GVMeProgram {
     GVMeProgram {
         code: generator.final_code,
         proc_info: generator.proc_info,
-        memory: generator.memory
+        memory: generator.memory,
     }
 }
 
@@ -382,7 +382,7 @@ impl<'a> GVMeCompileContext<'a> {
                 }
                 IR::Mul { dest, left, right } => {
                     if let IrOperand::Constant(const_right) = right {
-                        if const_right.count_ones() == 1 && *const_right < 32 {
+                        if const_right.count_ones() == 1 && *const_right <= 2048 {
                             let left_loc = self.get_var_location_not_acc(left, self.last_mem_slot);
                             let dest_loc =
                                 self.get_var_location_not_acc(dest, self.last_mem_slot - 1);
@@ -398,7 +398,7 @@ impl<'a> GVMeCompileContext<'a> {
                     }
 
                     if let IrOperand::Constant(const_left) = left {
-                        if const_left.count_ones() == 1 && *const_left < 32 {
+                        if const_left.count_ones() == 1 && *const_left <= 2048 {
                             let right_loc =
                                 self.get_var_location_not_acc(right, self.last_mem_slot);
                             let dest_loc =
@@ -451,7 +451,7 @@ impl<'a> GVMeCompileContext<'a> {
                 }
                 IR::Div { dest, left, right } => {
                     if let IrOperand::Constant(const_right) = right {
-                        if const_right.count_ones() == 1 && *const_right < 32 {
+                        if const_right.count_ones() == 1 && *const_right <= 2048 {
                             let left_loc = self.get_var_location_not_acc(left, self.last_mem_slot);
                             let dest_loc =
                                 self.get_var_location_not_acc(dest, self.last_mem_slot - 1);
@@ -514,8 +514,7 @@ impl<'a> GVMeCompileContext<'a> {
                 }
                 IR::Mod { dest, left, right } => {
                     if let IrOperand::Constant(const_right) = right {
-                        // TODO ADD THIS TO RUNTIME AS WELL (MUL DIV too)
-                        if const_right.count_ones() == 1 && *const_right < 32 {
+                        if const_right.count_ones() == 1 && *const_right <= 2048 {
                             let left_loc = self.last_mem_slot - 2;
 
                             let dest_loc =
@@ -784,6 +783,12 @@ impl<'a> GVMeCompileContext<'a> {
             }
             (false, false) => {
                 let left_loc = self.get_var_location_no_extra_cmds(left).unwrap();
+                if let IrOperand::Constant(c) = right {
+                    if *c == 0 {
+                        self.compile_load_loc_to_acc(&left_loc);
+                        return;
+                    }
+                }
                 let right_loc = self.get_var_location_no_extra_cmds(right).unwrap();
 
                 self.compile_load_loc_to_acc(&left_loc);
@@ -1000,37 +1005,37 @@ impl<'a> GVMeCompileContext<'a> {
         let relabeled_commands = renamed_commands
             .iter()
             .map(|cm| match cm {
-                IR::Label(label) => IR::Label(self.get_or_create_label(&label, &mut label_map)),
-                IR::Jump(label) => IR::Jump(self.get_or_create_label(&label, &mut label_map)),
+                IR::Label(label) => IR::Label(self.inline_get_or_create_label(&label, &mut label_map)),
+                IR::Jump(label) => IR::Jump(self.inline_get_or_create_label(&label, &mut label_map)),
                 IR::JZero { left, right, label } => IR::JZero {
                     left: left.clone(),
                     right: right.clone(),
-                    label: self.get_or_create_label(&label, &mut label_map),
+                    label: self.inline_get_or_create_label(&label, &mut label_map),
                 },
                 IR::JNotZero { left, right, label } => IR::JNotZero {
                     left: left.clone(),
                     right: right.clone(),
-                    label: self.get_or_create_label(&label, &mut label_map),
+                    label: self.inline_get_or_create_label(&label, &mut label_map),
                 },
                 IR::JPositive { left, right, label } => IR::JPositive {
                     left: left.clone(),
                     right: right.clone(),
-                    label: self.get_or_create_label(&label, &mut label_map),
+                    label: self.inline_get_or_create_label(&label, &mut label_map),
                 },
                 IR::JNegative { left, right, label } => IR::JNegative {
                     left: left.clone(),
                     right: right.clone(),
-                    label: self.get_or_create_label(&label, &mut label_map),
+                    label: self.inline_get_or_create_label(&label, &mut label_map),
                 },
                 IR::JPositiveOrZero { left, right, label } => IR::JPositiveOrZero {
                     left: left.clone(),
                     right: right.clone(),
-                    label: self.get_or_create_label(&label, &mut label_map),
+                    label: self.inline_get_or_create_label(&label, &mut label_map),
                 },
                 IR::JNegativeOrZero { left, right, label } => IR::JNegativeOrZero {
                     left: left.clone(),
                     right: right.clone(),
-                    label: self.get_or_create_label(&label, &mut label_map),
+                    label: self.inline_get_or_create_label(&label, &mut label_map),
                 },
                 _ => cm.clone(),
             })
@@ -1038,7 +1043,7 @@ impl<'a> GVMeCompileContext<'a> {
         self.compile_op(&relabeled_commands);
     }
 
-    fn get_or_create_label(
+    fn inline_get_or_create_label(
         &mut self,
         label: &str,
         label_map: &mut HashMap<LabelIdx, String>,

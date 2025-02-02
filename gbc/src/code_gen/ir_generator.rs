@@ -146,6 +146,7 @@ impl IrProgram {
                 ..
             } => {
                 let mut v = vec![];
+                v.push(IR::Comment(format!("{}", command)));
 
                 v.push(IR::Aloc {
                     name: variable.to_string(),

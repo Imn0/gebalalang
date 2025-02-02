@@ -231,7 +231,7 @@ impl<'a> GVMeCompileContext<'a> {
         let tmp = self.last_mem_slot - 2;
         let dont_swap = self.next_label();
         self.buff.push(GVMe::SUB(arg1));
-        self.buff.push(GVMe::jposz(dont_swap));
+        self.buff.push(GVMe::jpos(dont_swap));
         self.buff.push(GVMe::LOAD(arg1));
         self.buff.push(GVMe::STORE(tmp));
         self.buff.push(GVMe::LOAD(arg2));
