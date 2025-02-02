@@ -333,7 +333,7 @@ impl<'a> IRNameTransformer<'a> {
                 IR::Return => IR::Return,
                 IR::Read(ir_operand) => IR::Read(self.ir_oper_transform(ir_operand)),
                 IR::Write(ir_operand) => IR::Write(self.ir_oper_transform(ir_operand)),
-                IR::Comment(_) => todo!(),
+                IR::Comment(c) => IR::Comment(c.to_string()),
             })
         }
         v
