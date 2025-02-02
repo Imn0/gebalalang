@@ -1,17 +1,41 @@
 use assembler::assemble;
-use gvm_ext::compile;
+use compiler::compile;
 use gvme_optimizer::optimize;
+
+use crate::{
+    message::{DisplayMessage, Message, MessageSeverity},
+    program::Program,
+};
 
 use super::{Compile, GvmTarget};
 mod assembler;
-mod gvm_ext;
+mod builtins;
+mod compiler;
 mod gvme_optimizer;
 mod memory;
-mod builtins;
+mod gvm_ext;
 
 impl Compile for GvmTarget {
-    fn compile(&self, ir_prog: &crate::code_gen::IrProgram) -> Box<[u8]> {
-        let gvme = compile(ir_prog);
+    fn compile(&self, prog: &Program) -> Result<Box<[u8]>, ()> {
+        let ir_prog = &prog.ir_program;
+        let gvme_r = compile(ir_prog, false);
+        let gvme = match gvme_r {
+            Ok(p) => p,
+            Err(_) => {
+                let a = compile(ir_prog, true);
+                match a {
+                    Ok(p) => p,
+                    Err(e) => {
+                        prog.print_message(Message::GeneralMessage {
+                            severity: MessageSeverity::ERROR,
+                            message: &e,
+                        });
+                        return Err(());
+                    }
+                }
+            }
+        };
+
         // let optimized = gvme;
         let optimized = optimize(gvme);
         let assembled = assemble(&optimized.code, &optimized.proc_info, &optimized.memory);
@@ -21,6 +45,6 @@ impl Compile for GvmTarget {
         for instruction in &assembled {
             out += &format!("{}\n", instruction);
         }
-        out.as_bytes().into()
+        Ok(out.as_bytes().into())
     }
 }

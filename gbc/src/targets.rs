@@ -1,13 +1,10 @@
-use crate::{
-    code_gen::IrProgram,
-    program::{Program, Target},
-};
+use crate::program::{Program, Target};
 
 mod gvm;
 mod python;
 mod x86_64_linux_unknown;
 trait Compile {
-    fn compile(&self, ir_prog: &IrProgram) -> Box<[u8]>;
+    fn compile(&self, ir_prog: &Program) -> Result<Box<[u8]>, ()>;
 }
 struct PythonTarget;
 struct GvmTarget;
@@ -21,7 +18,7 @@ impl Program {
             Target::X86_64_LinuxUnknown => Box::new(X86_64LinuxUnknownTarget),
         };
 
-        self.output = target.compile(&self.ir_program);
+        self.output = target.compile(&self)?;
 
         Ok(())
     }

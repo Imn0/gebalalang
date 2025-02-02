@@ -1,9 +1,10 @@
-use crate::code_gen::ir::{IrOperand, IR};
+use crate::{code_gen::ir::{IrOperand, IR}, program::Program};
 
 use super::{Compile, PythonTarget};
 
 impl Compile for PythonTarget {
-    fn compile(&self, ir_prog: &crate::code_gen::IrProgram) -> Box<[u8]> {
+    fn compile(&self, prog: &Program) -> Result<Box<[u8]>, ()> {
+        let ir_prog = &prog.ir_program;
         let mut out = String::new();
 
         out += "#!/bin/python\n";
@@ -93,7 +94,7 @@ impl Compile for PythonTarget {
 
         out += "if __name__ == \"__main__\":\n";
         out += "\tmain()\n";
-        out.as_bytes().into()
+        Ok(out.as_bytes().into())
     }
 }
 

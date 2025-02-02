@@ -1,7 +1,4 @@
-use super::{
-    gvm_ext::{GVMe, GVMeProc},
-    memory::Memory,
-};
+use super::{compiler::GVMeProc, gvm_ext::GVMe, memory::Memory};
 use std::{collections::HashMap, fmt};
 
 #[derive(Clone)]
@@ -196,7 +193,7 @@ pub fn assemble(gvme: &Vec<GVMe>, procs: &HashMap<String, GVMeProc>, memory: &Me
 
                 let return_place = get_true_len_between(gvme, 0, i) + 3;
                 if let Some(loc) = memory.get_const(&(return_place as i64)) {
-                    // woho a lucky day! 
+                    // woho a lucky day!
                     asm_code.push(GVM::LOAD(loc.memory_address));
                 } else {
                     asm_code.push(GVM::SET(return_place as i64));

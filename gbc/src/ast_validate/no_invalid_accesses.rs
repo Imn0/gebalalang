@@ -1,4 +1,4 @@
-use std::{collections::HashMap, default};
+use std::collections::HashMap;
 
 use crate::{
     ast::{
@@ -718,6 +718,14 @@ impl<'a> GeneratorValidator<'a> {
                         });
 
                     let arg_is_bool = *proc_info.args.get(i).unwrap();
+                    if a.read_only {
+                        self.add_message(ValidateInfo {
+                            message: format!("Bleh"),
+                            location: Some(arg.location.clone()),
+                            severity: MessageSeverity::ERROR,
+                        });
+                        return;
+                    }
                     if a.is_array != arg_is_bool {
                         let msg;
                         if a.is_array {

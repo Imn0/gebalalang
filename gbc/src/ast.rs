@@ -326,7 +326,7 @@ impl Program {
         }
     }
 
-    fn gen_declarations(&self, node: Node) -> Vec<Declaration> {
+    fn gen_declarations(&mut self, node: Node) -> Vec<Declaration> {
         assert_eq!(node.kind(), "declarations");
         node.named_children(&mut node.walk())
             .map(|child| self.gen_declaration(child))
@@ -626,7 +626,7 @@ impl Program {
         }
     }
 
-    fn gen_declaration(&self, node: Node) -> Declaration {
+    fn gen_declaration(&mut self, node: Node) -> Declaration {
         assert_eq!(node.kind(), "declaration");
 
         let name = self.get_text(node.child_by_field_name("identifier").unwrap());
@@ -638,10 +638,39 @@ impl Program {
             .zip(node.child_by_field_name("end"))
             .map(|(start, end)| {
                 (
-                    self.get_text(start).parse().unwrap(),
-                    self.get_text(end).parse().unwrap(),
+                    self.get_text(start)
+                        .parse()
+                        .unwrap_or_else(|e: std::num::ParseIntError| {
+                            self.print_message(Message::CodeMessage {
+                                severity: MessageSeverity::ERROR,
+                                message: &format!("{e}"),
+                                location: location,
+                            });
+                            self.ast.is_valid = false;
+                            12
+                        }),
+                    self.get_text(end).parse()
+                        .unwrap_or_else(|e: std::num::ParseIntError| {
+                            self.print_message(Message::CodeMessage {
+                                severity: MessageSeverity::ERROR,
+                                message: &format!("{e}"),
+                                location: location,
+                            });
+                            self.ast.is_valid = false;
+                            12
+                        }),
                 )
             });
+
+        if let Some((l, r)) = size {
+            if l > r / 2 && l > 2048 {
+                self.print_message(Message::CodeMessage {
+                    severity: MessageSeverity::INFO,
+                    message: "using arrays with late beggining is costly",
+                    location: location,
+                });
+            }
+        }
 
         Declaration {
             name,

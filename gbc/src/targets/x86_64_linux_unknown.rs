@@ -1,6 +1,6 @@
 use std::{collections::HashMap, process::Command};
 
-use crate::code_gen::ir::{IrOperand, IR};
+use crate::{code_gen::ir::{IrOperand, IR}, program::Program};
 
 use super::{Compile, X86_64LinuxUnknownTarget};
 
@@ -11,7 +11,8 @@ struct CodeBlock {
 }
 
 impl Compile for X86_64LinuxUnknownTarget {
-    fn compile(&self, ir_prog: &crate::code_gen::IrProgram) -> Box<[u8]> {
+    fn compile(&self, prog: &Program) -> Result<Box<[u8]>, ()> {
+        let ir_prog = &prog.ir_program;
         let mut out = String::new();
 
         out += &compile_header();
@@ -35,7 +36,7 @@ impl Compile for X86_64LinuxUnknownTarget {
         }
 
         let compiled = std::fs::read("/tmp/a.out").unwrap();
-        compiled.into()
+        Ok(compiled.into())
     }
 }
 

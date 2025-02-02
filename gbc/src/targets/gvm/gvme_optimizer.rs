@@ -1,4 +1,4 @@
-use super::gvm_ext::{GVMe, GVMeProgram};
+use super::{compiler::GVMeProgram, gvm_ext::GVMe};
 
 pub fn optimize(gvme_prog: GVMeProgram) -> GVMeProgram {
     let mut prog = vec![];
