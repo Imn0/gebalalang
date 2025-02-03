@@ -3,10 +3,10 @@ use crate::program::{Program, Target};
 mod gvm;
 mod python;
 mod x86_64_linux_unknown;
-trait Compile {
-    fn compile(&self, ir_prog: &Program) -> Result<Box<[u8]>, ()>;
+pub trait Compile {
+    fn compile(&self, prog: &Program) -> Result<Box<[u8]>, ()>;
 }
-struct PythonTarget;
+pub struct PythonTarget;
 struct GvmTarget;
 struct X86_64LinuxUnknownTarget;
 

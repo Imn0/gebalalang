@@ -1,4 +1,7 @@
-use crate::{code_gen::ir::{IrOperand, IR}, program::Program};
+use crate::{
+    code_gen::ir::{IrOperand, IR},
+    program::Program,
+};
 
 use super::{Compile, PythonTarget};
 
@@ -18,7 +21,7 @@ impl Compile for PythonTarget {
             out += "def ";
             out += &format!(
                 "{}({}):\n",
-                proc.name,
+                sanitize_name(&proc.name),
                 proc.args
                     .iter()
                     .map(|arg| {
@@ -27,7 +30,7 @@ impl Compile for PythonTarget {
                         } else {
                             "int"
                         };
-                        format!("{}: {}", arg.name.clone(), what_type)
+                        format!("{}: {}", sanitize_name(&arg.name), what_type)
                     })
                     .collect::<Vec<String>>()
                     .join(", ")
@@ -43,7 +46,7 @@ impl Compile for PythonTarget {
 
             out += "\tIP = 0\n";
             out += &format!("\twhile IP < {}:\n", proc.cmds.len());
-            out += "\t\ttry:\n";
+            out += "\t\ttry:\n\t\t\tpass\n";
 
             for (i, ir_op) in proc.cmds.iter().enumerate() {
                 out += &format!("\t\t\tif IP == {}:\n", i);
@@ -62,7 +65,7 @@ impl Compile for PythonTarget {
                 "{}\n\n",
                 proc.args
                     .iter()
-                    .map(|arg| arg.name.clone())
+                    .map(|arg| sanitize_name(&arg.name))
                     .collect::<Vec<String>>()
                     .join(", ")
             );
@@ -78,7 +81,7 @@ impl Compile for PythonTarget {
         }
 
         out += &format!("\tIP = 0\n\twhile IP < {}:\n", ir_prog.main.len());
-        out += "\t\ttry:\n";
+        out += "\t\ttry:\n\t\t\tpass\n";
 
         for (i, ir_op) in ir_prog.main.iter().enumerate() {
             out += &format!("\t\t\tif IP == {}:\n", i);
@@ -101,46 +104,48 @@ impl Compile for PythonTarget {
 fn compile_op(ir_op: &IR) -> String {
     match ir_op {
         IR::Mov { dest, src } => {
-            format!("{} = {}", get_ir_operand(dest), get_ir_operand(src))
+            format!("{} = {}", get_ir_operand(dest), get_ir_operand_safe(src))
         }
         IR::Add { dest, left, right } => {
             format!(
                 "{} = {} + {}",
                 get_ir_operand(dest),
-                get_ir_operand(left),
-                get_ir_operand(right)
+                get_ir_operand_safe(left),
+                get_ir_operand_safe(right)
             )
         }
         IR::Sub { dest, left, right } => {
             format!(
                 "{} = {} - {}",
                 get_ir_operand(dest),
-                get_ir_operand(left),
-                get_ir_operand(right)
+                get_ir_operand_safe(left),
+                get_ir_operand_safe(right)
             )
         }
         IR::Mul { dest, left, right } => {
             format!(
                 "{} = {} * {}",
                 get_ir_operand(dest),
-                get_ir_operand(left),
-                get_ir_operand(right)
+                get_ir_operand_safe(left),
+                get_ir_operand_safe(right)
             )
         }
         IR::Div { dest, left, right } => {
             format!(
-                "{} = {} // {}",
+                "{} = {} // {} if {} != 0 else 0",
                 get_ir_operand(dest),
-                get_ir_operand(left),
-                get_ir_operand(right)
+                get_ir_operand_safe(left),
+                get_ir_operand_safe(right),
+                get_ir_operand_safe(right)
             )
         }
         IR::Mod { dest, left, right } => {
             format!(
-                "{} = {} % {}",
+                "{} = {} % {} if {} != 0 else 0",
                 get_ir_operand(dest),
-                get_ir_operand(left),
-                get_ir_operand(right)
+                get_ir_operand_safe(left),
+                get_ir_operand_safe(right),
+                get_ir_operand_safe(right)
             )
         }
         IR::Label(_) => {
@@ -152,48 +157,48 @@ fn compile_op(ir_op: &IR) -> String {
         IR::JZero { left, right, label } => {
             format!(
                 "if {} - {} == 0: raise JumpException(\"{}\")",
-                get_ir_operand(left),
-                get_ir_operand(right),
+                get_ir_operand_safe(left),
+                get_ir_operand_safe(right),
                 label
             )
         }
         IR::JNotZero { left, right, label } => {
             format!(
                 "if {} - {} != 0: raise JumpException(\"{}\")",
-                get_ir_operand(left),
-                get_ir_operand(right),
+                get_ir_operand_safe(left),
+                get_ir_operand_safe(right),
                 label
             )
         }
         IR::JPositive { left, right, label } => {
             format!(
                 "if {} - {} > 0: raise JumpException(\"{}\")",
-                get_ir_operand(left),
-                get_ir_operand(right),
+                get_ir_operand_safe(left),
+                get_ir_operand_safe(right),
                 label
             )
         }
         IR::JNegative { left, right, label } => {
             format!(
                 "if {} - {} < 0: raise JumpException(\"{}\")",
-                get_ir_operand(left),
-                get_ir_operand(right),
+                get_ir_operand_safe(left),
+                get_ir_operand_safe(right),
                 label
             )
         }
         IR::JPositiveOrZero { left, right, label } => {
             format!(
                 "if {} - {} >= 0: raise JumpException(\"{}\")",
-                get_ir_operand(left),
-                get_ir_operand(right),
+                get_ir_operand_safe(left),
+                get_ir_operand_safe(right),
                 label
             )
         }
         IR::JNegativeOrZero { left, right, label } => {
             format!(
                 "if {} - {} <= 0: raise JumpException(\"{}\")",
-                get_ir_operand(left),
-                get_ir_operand(right),
+                get_ir_operand_safe(left),
+                get_ir_operand_safe(right),
                 label
             )
         }
@@ -205,13 +210,13 @@ fn compile_op(ir_op: &IR) -> String {
                 "{} = {}({})",
                 arguments
                     .iter()
-                    .map(|o| o.to_string())
+                    .map(|o| sanitize_name(&o.to_string()))
                     .collect::<Vec<String>>()
                     .join(", "),
-                procedure,
+                sanitize_name(procedure),
                 arguments
                     .iter()
-                    .map(|o| o.to_string())
+                    .map(|o| sanitize_name(&o.to_string()))
                     .collect::<Vec<String>>()
                     .join(", ")
             )
@@ -223,7 +228,7 @@ fn compile_op(ir_op: &IR) -> String {
             format!("{} = int(input())", get_ir_operand(ir_operand))
         }
         IR::Write(ir_operand) => {
-            format!("print(f\"{{{}}}\")", get_ir_operand(ir_operand))
+            format!("print(f\"{{{}}}\")", get_ir_operand_safe(ir_operand))
         }
         IR::Aloc {
             name,
@@ -231,12 +236,12 @@ fn compile_op(ir_op: &IR) -> String {
             array_bounds: _,
         } => {
             if !*is_array {
-                format!("{}=0", name)
+                format!("{}=0", sanitize_name(name))
             } else {
-                format!("{}={{}}", name)
+                format!("{}={{}}", sanitize_name(name))
             }
         }
-        IR::Drop { name: _ } => {
+        IR::Drop { .. } => {
             format!("")
         }
         IR::Comment(_) => format!(""),
@@ -245,16 +250,40 @@ fn compile_op(ir_op: &IR) -> String {
 
 fn get_ir_operand(operand: &IrOperand) -> String {
     match operand {
-        IrOperand::Variable(name) => return get_base_name(name),
+        IrOperand::Variable(name) => return sanitize_name(&get_base_name(name)),
         IrOperand::Constant(num) => format!("{}", num),
         IrOperand::ArrayConstAccess { base_name, idx } => {
-            format!("{}[{}]", base_name, idx)
+            format!("{}[{}]", sanitize_name(base_name), idx)
         }
         IrOperand::ArrayDynamicAccess {
             base_name,
             idx_name,
         } => {
-            format!("{}[{}]", base_name, get_base_name(idx_name))
+            format!(
+                "{}[{}]",
+                sanitize_name(base_name),
+                sanitize_name(&get_base_name(idx_name))
+            )
+        }
+    }
+}
+
+fn get_ir_operand_safe(operand: &IrOperand) -> String {
+    match operand {
+        IrOperand::Variable(name) => return sanitize_name(&get_base_name(name)),
+        IrOperand::Constant(num) => format!("{}", num),
+        IrOperand::ArrayConstAccess { base_name, idx } => {
+            format!("{}.get({}, 0)", sanitize_name(base_name), idx)
+        }
+        IrOperand::ArrayDynamicAccess {
+            base_name,
+            idx_name,
+        } => {
+            format!(
+                "{}.get({}, 0)",
+                sanitize_name(base_name),
+                sanitize_name(&get_base_name(idx_name))
+            )
         }
     }
 }
@@ -263,4 +292,8 @@ fn get_base_name(name: &str) -> String {
     // let parts: Vec<&str> = name.split("_:").collect();
     // parts[0].to_owned()
     name.to_owned()
+}
+
+fn sanitize_name(name: &str) -> String {
+    format!("PYTHON_{name}")
 }

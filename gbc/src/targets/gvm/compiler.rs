@@ -114,27 +114,11 @@ impl<'a> GVMeCompileContext<'a> {
         buff = self.compile_op(&ir_program.main, buff)?;
         buff.push(GVMe::HALT);
 
-        let mut compiled_procs: HashSet<String> = HashSet::new();
-
-        // hard limit for iterations
-        for _ in 0..=ir_program.procedures.len() {
-            let left_to_compile: Vec<String> = self
-                .proc_to_compile
-                .difference(&compiled_procs)
-                .map(|s| s.to_string())
-                .collect();
-
-            if left_to_compile.len() == 0 {
-                break;
-            }
-            for name in left_to_compile {
-                compiled_procs.insert(name.clone());
-                let proc = self.ir_proc_info.get(&name).unwrap();
-                self.current_scope = name.clone();
-                buff = self.compile_procedure(proc, buff)?;
-                let return_addr = self.proc_info.get(&name).unwrap().return_address;
-                buff.push(GVMe::RTRN(return_addr));
-            }
+        for (name, proc) in &ir_program.procedures {
+            self.current_scope = name.clone();
+            buff = self.compile_procedure(proc, buff)?;
+            let return_addr = self.proc_info.get(name).unwrap().return_address;
+            buff.push(GVMe::RTRN(return_addr));
         }
 
         if self.do_compile_mul {
@@ -217,8 +201,10 @@ impl<'a> GVMeCompileContext<'a> {
                         let loc =
                             self.memory
                                 .allocate_array(name, &self.current_scope, left, right)?;
-                        self.const_in_acc(&loc.left_offset, &mut buff);
-                        buff.push(GVMe::STORE(loc.memory_address));
+                        if self.use_fat_arrays {
+                            self.const_in_acc(&loc.left_offset, &mut buff);
+                            buff.push(GVMe::STORE(loc.memory_address));
+                        }
                     } else {
                         self.memory.allocate_var(name, &self.current_scope)?;
                     }

@@ -22,7 +22,7 @@ pub struct ProcedureInfo {
     pub cmds: Vec<IR>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct IrProgram {
     pub main: Vec<IR>,
     pub procedures: HashMap<String, ProcedureInfo>,
