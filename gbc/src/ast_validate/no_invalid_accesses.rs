@@ -720,9 +720,9 @@ impl<'a> GeneratorValidator<'a> {
                     let arg_is_bool = *proc_info.args.get(i).unwrap();
                     if a.read_only {
                         self.add_message(ValidateInfo {
-                            message: format!("Bleh"),
+                            message: format!("passing read only variable to a procedure may be unsafe"),
                             location: Some(arg.location.clone()),
-                            severity: MessageSeverity::ERROR,
+                            severity: MessageSeverity::INFO,
                         });
                         return;
                     }
